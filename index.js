@@ -30,14 +30,14 @@ app.command("/pixl-help", async ({ ack, respond }) => {
 /pixl-help - Show this help message
 /pixl-catfact - Get a cat fact
 /pixl-joke - Get a random joke`
-  });
+  }); 
 });
 
 app.command("/pixl-catfact", async ({ ack, respond }) => {
   await ack();
 
   try {
-    const response = await axios.get("https://catfact.ninja/fact");
+    const response = await axios.get("https://catfact.ninja/fact"); 
     await respond({ text: `Cat Fact:\n${response.data.fact}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a cat fact." });
@@ -59,3 +59,5 @@ ${response.data.punchline}`
     await respond({ text: "Failed to fetch a joke." });
   }
 });
+
+// more commands can be added here following the same pattern
