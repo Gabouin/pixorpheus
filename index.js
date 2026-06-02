@@ -9,8 +9,6 @@ const db = new Pool({ connectionString: process.env.DATABASE_URL });
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
-  appToken: process.env.SLACK_APP_TOKEN,
-  socketMode: true
 });
 
 // ─────────────────────────────────────────────
@@ -602,6 +600,6 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
 // ─────────────────────────────────────────────
 
 (async () => {
-  await app.start();
+  await app.start(process.env.PORT || 3000);
   console.log("⚡ Pixl bot is running!");
 })();
