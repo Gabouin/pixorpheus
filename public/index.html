@@ -6,61 +6,20 @@
   <title>Pixl Dashboard</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f0f10;
-      color: #e1e1e6;
-      min-height: 100vh;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f10; color: #e1e1e6; min-height: 100vh; }
 
     /* ── Header ── */
-    header {
-      background: #1a1a1e;
-      border-bottom: 1px solid #2a2a2e;
-      padding: 0 24px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    header { background: #1a1a1e; border-bottom: 1px solid #2a2a2e; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 12px; }
     header .logo { font-size: 1.2rem; font-weight: 700; flex: 1; }
     header .user { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #aaa; }
     header .user img { width: 28px; height: 28px; border-radius: 50%; }
-    header .logout {
-      color: #888;
-      text-decoration: none;
-      font-size: 0.8rem;
-      padding: 4px 10px;
-      border: 1px solid #333;
-      border-radius: 6px;
-      transition: border-color 0.2s, color 0.2s;
-    }
+    header .logout { color: #888; text-decoration: none; font-size: 0.8rem; padding: 4px 10px; border: 1px solid #333; border-radius: 6px; transition: border-color .2s, color .2s; }
     header .logout:hover { border-color: #666; color: #ccc; }
 
     /* ── Tabs ── */
-    .tabs {
-      display: flex;
-      gap: 4px;
-      padding: 16px 24px 0;
-      border-bottom: 1px solid #2a2a2e;
-    }
-    .tab {
-      padding: 8px 18px;
-      font-size: 0.9rem;
-      cursor: pointer;
-      border-radius: 8px 8px 0 0;
-      color: #888;
-      border: 1px solid transparent;
-      border-bottom: none;
-      background: none;
-      transition: color 0.2s;
-    }
-    .tab.active {
-      color: #e1e1e6;
-      background: #1a1a1e;
-      border-color: #2a2a2e;
-      margin-bottom: -1px;
-    }
+    .tabs { display: flex; gap: 4px; padding: 16px 24px 0; border-bottom: 1px solid #2a2a2e; }
+    .tab { padding: 8px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 8px 8px 0 0; color: #888; border: 1px solid transparent; border-bottom: none; background: none; transition: color .2s; }
+    .tab.active { color: #e1e1e6; background: #1a1a1e; border-color: #2a2a2e; margin-bottom: -1px; }
 
     /* ── Content ── */
     .content { padding: 24px; max-width: 900px; margin: 0 auto; }
@@ -69,143 +28,70 @@
 
     /* ── Leaderboard ── */
     .leaderboard { display: flex; flex-direction: column; gap: 8px; }
-    .lb-row {
-      background: #1a1a1e;
-      border: 1px solid #2a2a2e;
-      border-radius: 10px;
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+    .lb-row { background: #1a1a1e; border: 1px solid #2a2a2e; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; }
     .lb-rank { width: 28px; font-size: 1rem; text-align: center; color: #555; font-weight: 700; }
-    .lb-rank.gold   { color: #f59e0b; }
+    .lb-rank.gold { color: #f59e0b; }
     .lb-rank.silver { color: #9ca3af; }
     .lb-rank.bronze { color: #b45309; }
-    .lb-avatar { width: 36px; height: 36px; border-radius: 50%; background: #2a2a2e; }
+    .lb-avatar { width: 36px; height: 36px; border-radius: 50%; background: #2a2a2e; flex-shrink: 0; }
     .lb-name { flex: 1; font-size: 0.95rem; }
-    .lb-count {
-      background: #2a2a2e;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 0.8rem;
-      color: #aaa;
-    }
+    .lb-count { background: #2a2a2e; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; color: #aaa; }
     .lb-count span { color: #e1e1e6; font-weight: 600; }
 
     /* ── Tickets ── */
-    .ticket-filters {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-    .filter-btn {
-      padding: 6px 14px;
-      font-size: 0.85rem;
-      border: 1px solid #2a2a2e;
-      border-radius: 20px;
-      background: none;
-      color: #888;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
+    .ticket-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .filter-btn { padding: 6px 14px; font-size: 0.85rem; border: 1px solid #2a2a2e; border-radius: 20px; background: none; color: #888; cursor: pointer; transition: all .2s; }
     .filter-btn.active { border-color: #5c6bc0; color: #9fa8da; background: #1e1f3a; }
+    .refresh-indicator { margin-left: auto; font-size: 0.75rem; color: #444; display: flex; align-items: center; gap: 6px; }
+    .refresh-dot { width: 6px; height: 6px; border-radius: 50%; background: #444; }
+    .refresh-dot.live { background: #34d399; box-shadow: 0 0 6px #34d39966; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
     .tickets { display: flex; flex-direction: column; gap: 8px; }
-    .ticket {
-      background: #1a1a1e;
-      border: 1px solid #2a2a2e;
-      border-radius: 10px;
-      overflow: hidden;
-      transition: border-color 0.2s;
-    }
+    .ticket { background: #1a1a1e; border: 1px solid #2a2a2e; border-radius: 10px; overflow: hidden; transition: border-color .2s; }
     .ticket:hover { border-color: #3a3a3e; }
-    .ticket-header {
-      padding: 14px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-    }
-    .status-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .status-dot.open   { background: #34d399; box-shadow: 0 0 6px #34d39966; }
+    .ticket-header { padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.open { background: #34d399; box-shadow: 0 0 6px #34d39966; }
     .status-dot.closed { background: #6b7280; }
-    .ticket-desc {
-      flex: 1;
-      font-size: 0.9rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 500px;
-    }
-    .ticket-meta { font-size: 0.75rem; color: #666; white-space: nowrap; }
-    .ticket-toggle { color: #555; font-size: 0.7rem; transition: transform 0.2s; }
+    .ticket-desc { flex: 1; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ticket-meta { font-size: 0.75rem; color: #555; white-space: nowrap; }
+    .ticket-toggle { color: #555; font-size: 0.7rem; transition: transform .2s; margin-left: 8px; }
     .ticket.expanded .ticket-toggle { transform: rotate(180deg); }
 
-    .ticket-body {
-      display: none;
-      border-top: 1px solid #2a2a2e;
-      padding: 16px;
-    }
+    .ticket-body { display: none; border-top: 1px solid #2a2a2e; }
     .ticket.expanded .ticket-body { display: block; }
 
-    .ticket-full-desc {
-      font-size: 0.9rem;
-      color: #ccc;
-      margin-bottom: 16px;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .reply-area {
-      display: flex;
-      gap: 8px;
-      align-items: flex-end;
-    }
-    .reply-input {
-      flex: 1;
-      background: #0f0f10;
-      border: 1px solid #2a2a2e;
-      border-radius: 8px;
-      color: #e1e1e6;
-      padding: 10px 12px;
-      font-size: 0.875rem;
-      font-family: inherit;
-      resize: vertical;
-      min-height: 72px;
-      transition: border-color 0.2s;
-    }
-    .reply-input:focus { outline: none; border-color: #5c6bc0; }
-    .reply-btn {
-      background: #5c6bc0;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 18px;
-      font-size: 0.875rem;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.2s;
-    }
-    .reply-btn:hover { background: #7986cb; }
-    .reply-btn:disabled { background: #2a2a3e; color: #666; cursor: not-allowed; }
-    .reply-status { font-size: 0.8rem; margin-top: 8px; }
-    .reply-status.ok   { color: #34d399; }
-    .reply-status.err  { color: #f87171; }
+    /* ── Thread ── */
+    .thread { max-height: 400px; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .thread-msg { display: flex; gap: 10px; align-items: flex-start; }
+    .thread-msg.bot-msg { opacity: .6; }
+    .msg-avatar { width: 32px; height: 32px; border-radius: 6px; background: #2a2a2e; flex-shrink: 0; }
+    .msg-body { flex: 1; min-width: 0; }
+    .msg-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+    .msg-name { font-size: 0.85rem; font-weight: 600; }
+    .msg-time { font-size: 0.72rem; color: #555; }
+    .msg-text { font-size: 0.875rem; color: #ccc; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .thread-loading { text-align: center; color: #555; font-size: 0.8rem; padding: 20px; }
 
-    /* ── Empty / Loading ── */
+    /* ── Actions bar ── */
+    .ticket-actions { padding: 12px 16px; border-top: 1px solid #2a2a2e; display: flex; gap: 8px; align-items: flex-end; }
+    .reply-input { flex: 1; background: #0f0f10; border: 1px solid #2a2a2e; border-radius: 8px; color: #e1e1e6; padding: 10px 12px; font-size: 0.875rem; font-family: inherit; resize: vertical; min-height: 64px; transition: border-color .2s; }
+    .reply-input:focus { outline: none; border-color: #5c6bc0; }
+    .btn { border: none; border-radius: 8px; padding: 10px 16px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; transition: background .2s, opacity .2s; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: #5c6bc0; color: #fff; }
+    .btn-primary:not(:disabled):hover { background: #7986cb; }
+    .btn-resolve { background: #065f46; color: #6ee7b7; }
+    .btn-resolve:not(:disabled):hover { background: #047857; }
+    .reply-status { font-size: 0.78rem; margin-top: 6px; padding: 0 16px 10px; }
+    .reply-status.ok { color: #34d399; }
+    .reply-status.err { color: #f87171; }
+    .resolved-banner { padding: 12px 16px; font-size: 0.82rem; color: #6b7280; border-top: 1px solid #2a2a2e; }
+
+    /* ── Misc ── */
     .empty { text-align: center; color: #555; padding: 48px 0; font-size: 0.9rem; }
-    .skeleton {
-      background: linear-gradient(90deg, #1a1a1e 25%, #222226 50%, #1a1a1e 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.2s infinite;
-      border-radius: 10px;
-      height: 56px;
-    }
+    .skeleton { background: linear-gradient(90deg,#1a1a1e 25%,#222226 50%,#1a1a1e 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 10px; height: 56px; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
   </style>
 </head>
@@ -227,7 +113,6 @@
 
 <div class="content">
 
-  <!-- Leaderboard -->
   <div class="panel active" id="panel-leaderboard">
     <div class="leaderboard" id="leaderboard">
       <div class="skeleton"></div>
@@ -236,12 +121,15 @@
     </div>
   </div>
 
-  <!-- Tickets -->
   <div class="panel" id="panel-tickets">
-    <div class="ticket-filters">
+    <div class="ticket-toolbar">
       <button class="filter-btn active" data-status="all">All</button>
       <button class="filter-btn" data-status="open">Open</button>
       <button class="filter-btn" data-status="closed">Resolved</button>
+      <span class="refresh-indicator">
+        <span class="refresh-dot live" id="refresh-dot"></span>
+        <span id="refresh-label">live</span>
+      </span>
     </div>
     <div class="tickets" id="tickets">
       <div class="skeleton"></div>
@@ -256,6 +144,8 @@
 // ── State ──────────────────────────────────────────────────────────────────────
 let currentStatus = 'all';
 const userCache = {};
+let ticketPollTimer = null;
+let threadPollTimers = {};   // ts → timer id
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -278,10 +168,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
   if (res.status === 401) { location.href = '/login.html'; return null; }
   return res.json();
 }
@@ -289,11 +176,11 @@ async function api(path, opts = {}) {
 async function getUser(id) {
   if (userCache[id]) return userCache[id];
   const data = await api(`/api/users/${id}`);
-  if (data) userCache[id] = data;
+  if (data && !data.error) userCache[id] = data;
   return data || { id, name: id, avatar: null };
 }
 
-// ── User header ────────────────────────────────────────────────────────────────
+// ── Header ────────────────────────────────────────────────────────────────────
 async function loadMe() {
   const me = await api('/api/me');
   if (!me) return;
@@ -312,109 +199,196 @@ async function loadLeaderboard() {
   if (!data || data.error) { el.innerHTML = '<div class="empty">Failed to load leaderboard.</div>'; return; }
   if (data.length === 0) { el.innerHTML = '<div class="empty">No resolved tickets yet.</div>'; return; }
 
-  // Fetch all user profiles in parallel
-  const users = await Promise.all(data.map(row => getUser(row.slack_id)));
-
-  const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
-  const rankIcon  = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+  const users = await Promise.all(data.map(r => getUser(r.slack_id)));
+  const rankClass = i => ['gold','silver','bronze'][i] || '';
+  const rankIcon  = i => ['🥇','🥈','🥉'][i] || `#${i+1}`;
 
   el.innerHTML = data.map((row, i) => {
-    const user = users[i] || { name: row.slack_id, avatar: null };
-    const avatarHtml = user.avatar
-      ? `<img class="lb-avatar" src="${user.avatar}" alt="${user.name}">`
-      : `<div class="lb-avatar"></div>`;
-    return `
-      <div class="lb-row">
-        <span class="lb-rank ${rankClass(i)}">${rankIcon(i)}</span>
-        ${avatarHtml}
-        <span class="lb-name">${escHtml(user.name)}</span>
-        <span class="lb-count"><span>${row.resolved}</span> resolved</span>
-      </div>`;
+    const u = users[i] || { name: row.slack_id, avatar: null };
+    const av = u.avatar ? `<img class="lb-avatar" src="${u.avatar}" alt="">` : `<div class="lb-avatar"></div>`;
+    return `<div class="lb-row">${av}<span class="lb-name">${escHtml(u.name)}</span><span class="lb-count"><span>${row.resolved}</span> resolved</span></div>`;
   }).join('');
 }
 
 // ── Tickets ────────────────────────────────────────────────────────────────────
-async function loadTickets() {
+async function loadTickets(silent = false) {
   const el = document.getElementById('tickets');
-  el.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="opacity:.7"></div>';
+  if (!silent) el.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="opacity:.7"></div>';
 
   const url = currentStatus === 'all' ? '/api/tickets' : `/api/tickets?status=${currentStatus}`;
   const data = await api(url);
   if (!data || data.error) { el.innerHTML = '<div class="empty">Failed to load tickets.</div>'; return; }
   if (data.length === 0) { el.innerHTML = '<div class="empty">No tickets found.</div>'; return; }
 
-  el.innerHTML = data.map(ticket => `
-    <div class="ticket" id="ticket-${ticket.msg_ts}" data-ts="${ticket.msg_ts}">
-      <div class="ticket-header" onclick="toggleTicket('${ticket.msg_ts}')">
-        <span class="status-dot ${ticket.status}"></span>
-        <span class="ticket-desc">${escHtml(ticket.description || '[no description]')}</span>
-        <span class="ticket-meta">by <@${ticket.opened_by_slack_id}> · ${relativeTime(ticket.msg_ts)}</span>
+  // Keep track of which tickets are currently expanded
+  const expanded = new Set(
+    [...document.querySelectorAll('.ticket.expanded')].map(t => t.dataset.ts)
+  );
+
+  el.innerHTML = data.map(t => buildTicketHTML(t)).join('');
+
+  // Re-expand previously expanded tickets and reload their threads
+  expanded.forEach(ts => {
+    const el = document.getElementById(`ticket-${ts}`);
+    if (el) {
+      el.classList.add('expanded');
+      loadThread(ts, true); // silent reload
+    }
+  });
+
+  schedulePoll();
+}
+
+function buildTicketHTML(t) {
+  const isOpen = t.status === 'open';
+  return `
+    <div class="ticket" id="ticket-${t.msg_ts}" data-ts="${t.msg_ts}">
+      <div class="ticket-header" onclick="toggleTicket('${t.msg_ts}')">
+        <span class="status-dot ${t.status}"></span>
+        <span class="ticket-desc">${escHtml(t.description || '[no description]')}</span>
+        <span class="ticket-meta">${relativeTime(t.msg_ts)}</span>
         <span class="ticket-toggle">▼</span>
       </div>
       <div class="ticket-body">
-        <div class="ticket-full-desc">${escHtml(ticket.description || '[no description]')}</div>
-        ${ticket.status === 'open' ? `
-        <div class="reply-area">
-          <textarea class="reply-input" placeholder="Type your reply… it will be sent to Slack as you." id="reply-text-${ticket.msg_ts}"></textarea>
-          <button class="reply-btn" onclick="sendReply('${ticket.msg_ts}')">Send reply</button>
+        <div class="thread" id="thread-${t.msg_ts}">
+          <div class="thread-loading">Loading thread…</div>
         </div>
-        <div class="reply-status" id="reply-status-${ticket.msg_ts}"></div>
-        ` : '<div style="color:#555;font-size:.8rem;">This ticket is resolved.</div>'}
+        ${isOpen ? `
+        <div class="ticket-actions">
+          <textarea class="reply-input" id="reply-${t.msg_ts}" placeholder="Reply as you — sent to the Slack thread…"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn-resolve" onclick="resolveTicket('${t.msg_ts}')">✅ Resolve</button>
+            <button class="btn btn-primary" onclick="sendReply('${t.msg_ts}')">Send reply</button>
+          </div>
+        </div>
+        <div class="reply-status" id="reply-status-${t.msg_ts}"></div>
+        ` : `<div class="resolved-banner">✅ This ticket is resolved.</div>`}
       </div>
-    </div>
-  `).join('');
+    </div>`;
 }
 
 function toggleTicket(ts) {
-  document.getElementById(`ticket-${ts}`).classList.toggle('expanded');
+  const el = document.getElementById(`ticket-${ts}`);
+  const wasExpanded = el.classList.contains('expanded');
+  el.classList.toggle('expanded');
+  if (!wasExpanded) {
+    loadThread(ts);
+    startThreadPoll(ts);
+  } else {
+    stopThreadPoll(ts);
+  }
 }
 
+// ── Thread ────────────────────────────────────────────────────────────────────
+async function loadThread(ts, silent = false) {
+  const el = document.getElementById(`thread-${ts}`);
+  if (!el) return;
+  if (!silent) el.innerHTML = '<div class="thread-loading">Loading thread…</div>';
+
+  const data = await api(`/api/tickets/${ts}/thread`);
+  if (!data || data.error) { el.innerHTML = '<div class="thread-loading">Failed to load thread.</div>'; return; }
+  if (data.length === 0) { el.innerHTML = '<div class="thread-loading">No messages yet.</div>'; return; }
+
+  const wasAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
+
+  el.innerHTML = data.map(msg => `
+    <div class="thread-msg${msg.isBot ? ' bot-msg' : ''}">
+      ${msg.avatar ? `<img class="msg-avatar" src="${msg.avatar}" alt="">` : `<div class="msg-avatar"></div>`}
+      <div class="msg-body">
+        <div class="msg-header">
+          <span class="msg-name">${escHtml(msg.name)}</span>
+          <span class="msg-time">${relativeTime(msg.ts)}</span>
+        </div>
+        <div class="msg-text">${formatSlackText(msg.text)}</div>
+      </div>
+    </div>
+  `).join('');
+
+  if (wasAtBottom || !silent) el.scrollTop = el.scrollHeight;
+}
+
+// ── Thread polling ────────────────────────────────────────────────────────────
+function startThreadPoll(ts) {
+  stopThreadPoll(ts);
+  threadPollTimers[ts] = setInterval(() => loadThread(ts, true), 5000);
+}
+
+function stopThreadPoll(ts) {
+  if (threadPollTimers[ts]) { clearInterval(threadPollTimers[ts]); delete threadPollTimers[ts]; }
+}
+
+// ── Ticket list polling ───────────────────────────────────────────────────────
+function schedulePoll() {
+  if (ticketPollTimer) clearTimeout(ticketPollTimer);
+  ticketPollTimer = setTimeout(() => loadTickets(true), 30000);
+}
+
+// ── Reply ─────────────────────────────────────────────────────────────────────
 async function sendReply(ts) {
-  const input = document.getElementById(`reply-text-${ts}`);
+  const input = document.getElementById(`reply-${ts}`);
   const status = document.getElementById(`reply-status-${ts}`);
-  const btn = input.nextElementSibling;
   const text = input.value.trim();
   if (!text) return;
 
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-  status.textContent = '';
-  status.className = 'reply-status';
+  setStatus(status, '', '');
+  input.disabled = true;
 
-  const res = await api(`/api/tickets/${ts}/reply`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  });
-
-  btn.disabled = false;
-  btn.textContent = 'Send reply';
+  const res = await api(`/api/tickets/${ts}/reply`, { method: 'POST', body: JSON.stringify({ text }) });
+  input.disabled = false;
 
   if (res?.ok) {
     input.value = '';
-    status.textContent = '✓ Sent to Slack thread';
-    status.className = 'reply-status ok';
-    setTimeout(() => { status.textContent = ''; }, 3000);
+    setStatus(status, '✓ Sent', 'ok');
+    loadThread(ts, true);
   } else {
-    status.textContent = `✗ ${res?.error || 'Failed to send'}`;
-    status.className = 'reply-status err';
+    setStatus(status, `✗ ${res?.error || 'Failed'}`, 'err');
+  }
+}
+
+// ── Resolve ───────────────────────────────────────────────────────────────────
+async function resolveTicket(ts) {
+  const status = document.getElementById(`reply-status-${ts}`);
+  const btn = document.querySelector(`#ticket-${ts} .btn-resolve`);
+  if (!confirm('Mark this ticket as resolved?')) return;
+
+  btn.disabled = true;
+  const res = await api(`/api/tickets/${ts}/resolve`, { method: 'POST', body: '{}' });
+  btn.disabled = false;
+
+  if (res?.ok) {
+    setStatus(status, '✅ Resolved!', 'ok');
+    stopThreadPoll(ts);
+    setTimeout(() => loadTickets(true), 800);
+  } else {
+    setStatus(status, `✗ ${res?.error || 'Failed'}`, 'err');
   }
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function setStatus(el, text, cls) {
+  if (!el) return;
+  el.textContent = text;
+  el.className = `reply-status${cls ? ' '+cls : ''}`;
+  if (cls === 'ok') setTimeout(() => { el.textContent = ''; el.className = 'reply-status'; }, 3000);
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatSlackText(text) {
+  if (!text) return '';
+  return escHtml(text)
+    .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code style="background:#2a2a2e;padding:1px 4px;border-radius:3px;font-size:.85em">$1</code>')
+    .replace(/&lt;@([A-Z0-9]+)(?:\|[^&]+)?&gt;/g, '<span style="color:#9fa8da">@$1</span>')
+    .replace(/\n/g, '<br>');
 }
 
 function relativeTime(slackTs) {
-  const ms = parseFloat(slackTs) * 1000;
-  const diff = Date.now() - ms;
-  const m = Math.floor(diff / 60000);
-  const h = Math.floor(m / 60);
-  const d = Math.floor(h / 24);
+  const diff = Date.now() - parseFloat(slackTs) * 1000;
+  const m = Math.floor(diff / 60000), h = Math.floor(m/60), d = Math.floor(h/24);
   if (d > 0) return `${d}d ago`;
   if (h > 0) return `${h}h ago`;
   if (m > 0) return `${m}m ago`;

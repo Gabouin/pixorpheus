@@ -194,6 +194,83 @@ app.post('/api/tickets/:ts/reply', requireAuth, async (req, res) => {
   }
 });
 
+// Fetch thread messages from Slack
+app.get('/api/tickets/:ts/thread', requireAuth, async (req, res) => {
+  try {
+    const result = await slack.conversations.replies({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      ts: req.params.ts,
+      limit: 200,
+    });
+
+    const messages = await Promise.all(
+      result.messages.map(async (msg, i) => {
+        let name = msg.username || 'Bot';
+        let avatar = msg.icons?.image_72 || null;
+        if (msg.user) {
+          try { const u = await getSlackUser(msg.user); name = u.name; avatar = u.avatar; } catch (_) {}
+        }
+        return { ts: msg.ts, text: msg.text, name, avatar, isFirst: i === 0, isBot: !!msg.bot_id };
+      })
+    );
+
+    res.json(messages);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Resolve a ticket from the dashboard
+app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
+  const { ts } = req.params;
+  const user = req.session.user;
+
+  try {
+    const check = await db.query(
+      'SELECT status, ticket_msg_ts FROM tickets WHERE msg_ts = $1', [ts]
+    );
+    if (!check.rows[0]) return res.status(404).json({ error: 'Ticket not found' });
+    if (check.rows[0].status === 'closed') return res.status(400).json({ error: 'Already resolved' });
+
+    await db.query(
+      `UPDATE tickets SET status = 'closed', closed_at = NOW(), closed_by_slack_id = $1 WHERE msg_ts = $2`,
+      [user.id, ts]
+    );
+
+    let username = user.name;
+    let icon_url = user.avatar;
+    try { const info = await getSlackUser(user.id); username = info.name; icon_url = info.avatar; } catch (_) {}
+
+    await slack.chat.postMessage({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      thread_ts: ts,
+      text: `✅ Resolved by <@${user.id}>!`,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `✅ Resolved by <@${user.id}>! If you have more questions, feel free to open a new thread.` } },
+        { type: 'actions', elements: [{ type: 'button', action_id: 'reopen_ticket', text: { type: 'plain_text', text: '🔄 Reopen' }, value: ts }] },
+      ],
+    });
+
+    try { await slack.reactions.add({ channel: process.env.SLACK_HELP_CHANNEL, name: 'white_check_mark', timestamp: ts }); } catch (_) {}
+    try { await slack.reactions.remove({ channel: process.env.SLACK_HELP_CHANNEL, name: 'thinking_face', timestamp: ts }); } catch (_) {}
+
+    if (check.rows[0].ticket_msg_ts) {
+      try {
+        await slack.chat.update({
+          channel: process.env.SLACK_TICKET_CHANNEL,
+          ts: check.rows[0].ticket_msg_ts,
+          text: `✅ Resolved by ${username} via dashboard`,
+          blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ *Resolved by ${username} via dashboard*` } }],
+        });
+      } catch (_) {}
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─────────────────────────────────────────────
 // SERVE DASHBOARD
 // ─────────────────────────────────────────────
