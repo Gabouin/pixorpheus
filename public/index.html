@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pixl Support</title>
+  <title>Pixl — Support</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -231,6 +231,64 @@
     .action-status.ok  { color: #0bc997; }
     .action-status.err { color: #e05555; }
 
+    /* ── Confidentiality overlay ─────────────── */
+    #conf-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.88);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #conf-overlay.visible { display: flex; }
+    #conf-card {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 4px;
+      padding: 44px 40px;
+      max-width: 460px;
+      width: 100%;
+      text-align: center;
+    }
+    #conf-tag {
+      display: inline-block;
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #7a6020;
+      border: 1px solid #3a2e10;
+      border-radius: 3px;
+      padding: 2px 8px;
+      margin-bottom: 18px;
+    }
+    #conf-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      margin-bottom: 16px;
+    }
+    #conf-text {
+      font-size: .85rem;
+      line-height: 1.7;
+      color: #777;
+      margin-bottom: 28px;
+    }
+    #conf-btn {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      color: #d0d0d0;
+      font-size: .875rem;
+      font-weight: 600;
+      padding: 11px 32px;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    #conf-btn:hover { background: #161616; border-color: #444; color: #fff; }
+
     /* ── Empty / skeleton ─────────────────────── */
     .empty { text-align: center; color: #333; padding: 40px; font-size: .85rem; }
     .sk { background: linear-gradient(90deg,#111 25%,#181818 50%,#111 75%); background-size: 200%; animation: sk 1.2s infinite; border-radius: 3px; }
@@ -240,7 +298,7 @@
 <body>
 
 <header>
-  <span class="logo">🎯 Pixl Support</span>
+  <span class="logo">Pixl Support</span>
   <div class="user-info">
     <img id="u-avatar" src="" alt="" style="display:none">
     <span id="u-name"></span>
@@ -250,6 +308,18 @@
 
 <div class="page">
   <h2>Support</h2>
+  <!-- Confidentiality overlay -->
+  <div id="conf-overlay">
+    <div id="conf-card">
+      <div id="conf-tag">Confidential</div>
+      <h2 id="conf-title">Confidentiality Reminder</h2>
+      <p id="conf-text">
+        This dashboard contains sensitive and confidential information, including private user support conversations.<br><br>
+        Do not share, screenshot, copy, or discuss the content of this page outside of your authorized team.
+      </p>
+      <button id="conf-btn" onclick="dismissReminder()">I Understand</button>
+    </div>
+  </div>
   <p class="subtitle">Tickets from the Slack help channel.</p>
 
   <!-- Stats -->
@@ -598,9 +668,9 @@ async function sendReply(ts, btn) {
   try {
     const res = await api(`/api/tickets/${ts}/reply`, { method: 'POST', body: JSON.stringify({ text: txt }) });
     btn.disabled = false;
-    if (res?.ok) { ta.value = ''; showStatus(st, '✓ Sent', 'ok'); loadThread(ts, true); }
-    else showStatus(st, '✗ ' + (res?.error || 'Failed'), 'err');
-  } catch (e) { btn.disabled = false; showStatus(st, '✗ ' + e.message, 'err'); }
+    if (res?.ok) { ta.value = ''; showStatus(st, 'Sent', 'ok'); loadThread(ts, true); }
+    else showStatus(st, 'Error: ' + (res?.error || 'Failed'), 'err');
+  } catch (e) { btn.disabled = false; showStatus(st, 'Error: ' + e.message, 'err'); }
 }
 
 // ── Resolve ───────────────────────────────────────────────────────────────────
@@ -623,13 +693,13 @@ async function resolveTicket(ts, btn) {
     const res = await api(`/api/tickets/${ts}/resolve`, { method: 'POST', body: '{}' });
     btn.disabled = false;
     if (res?.ok) {
-      showStatus(st, '✅ Resolved!', 'ok');
+      showStatus(st, 'Resolved', 'ok');
       clearInterval(threadTimers[ts]); delete threadTimers[ts];
       setTimeout(() => loadTickets(true), 800);
     } else {
-      showStatus(st, '✗ ' + (res?.error || 'Unknown error'), 'err');
+      showStatus(st, 'Error: ' + (res?.error || 'Unknown error'), 'err');
     }
-  } catch (e) { btn.disabled = false; showStatus(st, '✗ ' + e.message, 'err'); }
+  } catch (e) { btn.disabled = false; showStatus(st, 'Error: ' + e.message, 'err'); }
 }
 
 function showStatus(el, msg, cls) {
@@ -653,6 +723,26 @@ document.getElementById('search').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(loadTickets, 350);
 });
+
+// ── Confidentiality reminder ──────────────────────────────────────────────────
+const INACTIVITY_MS = 15 * 60 * 1000;
+let lastActivity = Date.now();
+
+['mousemove','keydown','click','touchstart','scroll'].forEach(e => {
+  document.addEventListener(e, () => { lastActivity = Date.now(); }, { passive: true });
+});
+
+setInterval(() => {
+  const overlay = document.getElementById('conf-overlay');
+  if (!overlay.classList.contains('visible') && Date.now() - lastActivity >= INACTIVITY_MS) {
+    overlay.classList.add('visible');
+  }
+}, 30000);
+
+function dismissReminder() {
+  lastActivity = Date.now();
+  document.getElementById('conf-overlay').classList.remove('visible');
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadMe();
