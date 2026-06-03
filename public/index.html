@@ -610,16 +610,14 @@ function buildRow(t) {
 
 // ── Event delegation ──────────────────────────────────────────────────────────
 document.getElementById('ticket-list').addEventListener('click', e => {
-  // Don't toggle when clicking interactive elements
-  if (e.target.matches('textarea, button, input')) return;
-
   const resolveBtn = e.target.closest('[data-action="resolve"]');
   const replyBtn   = e.target.closest('[data-action="reply"]');
   const row        = e.target.closest('[data-action="toggle"]');
 
   if (resolveBtn) { resolveTicket(resolveBtn.dataset.ts, resolveBtn); return; }
   if (replyBtn)   { sendReply(replyBtn.dataset.ts, replyBtn); return; }
-  if (row)        { toggleRow(row); }
+  // Only toggle if not clicking on an interactive element
+  if (row && !e.target.closest('textarea, button, input')) { toggleRow(row); }
 });
 
 function toggleRow(row) {
