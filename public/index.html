@@ -230,20 +230,28 @@ async function loadTickets(silent = false) {
   if (!data || data.error) { el.innerHTML = '<div class="empty">Failed to load tickets.</div>'; return; }
   if (data.length === 0) { el.innerHTML = '<div class="empty">No tickets found.</div>'; return; }
 
-  // Keep track of which tickets are currently expanded
+  // Save expanded state + textarea drafts before rebuilding
   const expanded = new Set(
     [...document.querySelectorAll('.ticket.expanded')].map(t => t.dataset.ts)
   );
+  const drafts = {};
+  document.querySelectorAll('.reply-input').forEach(ta => {
+    if (ta.value.trim()) drafts[ta.id] = ta.value;
+  });
 
   el.innerHTML = data.map(t => buildTicketHTML(t)).join('');
 
-  // Re-expand previously expanded tickets and reload their threads
+  // Restore expanded state, threads, and drafts
   expanded.forEach(ts => {
-    const el = document.getElementById(`ticket-${ts}`);
-    if (el) {
-      el.classList.add('expanded');
-      loadThread(ts, true); // silent reload
+    const ticketEl = document.getElementById(`ticket-${ts}`);
+    if (ticketEl) {
+      ticketEl.classList.add('expanded');
+      loadThread(ts, true);
     }
+  });
+  Object.entries(drafts).forEach(([id, value]) => {
+    const ta = document.getElementById(id);
+    if (ta) ta.value = value;
   });
 
   schedulePoll();
@@ -253,7 +261,7 @@ function buildTicketHTML(t) {
   const isOpen = t.status === 'open';
   return `
     <div class="ticket" id="ticket-${t.msg_ts}" data-ts="${t.msg_ts}">
-      <div class="ticket-header" onclick="toggleTicket('${t.msg_ts}')">
+      <div class="ticket-header" data-action="toggle">
         <span class="status-dot ${t.status}"></span>
         <span class="ticket-desc">${escHtml(t.description || '[no description]')}</span>
         <span class="ticket-meta">${relativeTime(t.msg_ts)}</span>
@@ -267,8 +275,8 @@ function buildTicketHTML(t) {
         <div class="ticket-actions">
           <textarea class="reply-input" id="reply-${t.msg_ts}" placeholder="Reply as you — sent to the Slack thread…"></textarea>
           <div style="display:flex;flex-direction:column;gap:6px">
-            <button class="btn btn-resolve" onclick="resolveTicket('${t.msg_ts}')">✅ Resolve</button>
-            <button class="btn btn-primary" onclick="sendReply('${t.msg_ts}')">Send reply</button>
+            <button class="btn btn-resolve" data-action="resolve">✅ Resolve</button>
+            <button class="btn btn-primary" data-action="reply">Send reply</button>
           </div>
         </div>
         <div class="reply-status" id="reply-status-${t.msg_ts}"></div>
@@ -288,6 +296,21 @@ function toggleTicket(ts) {
     stopThreadPoll(ts);
   }
 }
+
+// Single delegated listener — no inline onclick needed
+document.getElementById('tickets').addEventListener('click', e => {
+  const ticket = e.target.closest('.ticket');
+  if (!ticket) return;
+  const ts = ticket.dataset.ts;
+
+  if (e.target.closest('[data-action="resolve"]')) {
+    resolveTicket(ts);
+  } else if (e.target.closest('[data-action="reply"]')) {
+    sendReply(ts);
+  } else if (e.target.closest('[data-action="toggle"]')) {
+    toggleTicket(ts);
+  }
+});
 
 // ── Thread ────────────────────────────────────────────────────────────────────
 async function loadThread(ts, silent = false) {
