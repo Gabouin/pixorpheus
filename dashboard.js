@@ -145,17 +145,63 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/leaderboard', requireAuth, async (req, res) => {
+app.get('/api/stats', requireAuth, async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT closed_by_slack_id AS slack_id, COUNT(*)::int AS resolved
+      SELECT
+        COUNT(*)::int                                        AS total,
+        COUNT(*) FILTER (WHERE status = 'open')::int        AS open,
+        COUNT(*) FILTER (WHERE status = 'closed')::int      AS resolved,
+        MIN(msg_ts)  FILTER (WHERE status = 'open')         AS oldest_open_ts
       FROM tickets
-      WHERE status = 'closed' AND closed_by_slack_id IS NOT NULL
-      GROUP BY closed_by_slack_id
-      ORDER BY resolved DESC
-      LIMIT 20
     `);
-    res.json(result.rows);
+    const row = result.rows[0];
+    let longest_open_days = null;
+    if (row.oldest_open_ts) {
+      const ms = parseFloat(row.oldest_open_ts) * 1000;
+      longest_open_days = ((Date.now() - ms) / 86400000).toFixed(1);
+    }
+    res.json({ total: row.total, open: row.open, resolved: row.resolved, longest_open_days });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/activity', requireAuth, async (req, res) => {
+  try {
+    const [created, resolved] = await Promise.all([
+      db.query(`
+        SELECT to_char(to_timestamp(msg_ts::float), 'MM-DD') AS day, COUNT(*)::int AS count
+        FROM tickets
+        WHERE msg_ts::float >= extract(epoch from now() - interval '30 days')
+        GROUP BY day ORDER BY day
+      `),
+      db.query(`
+        SELECT to_char(closed_at, 'MM-DD') AS day, COUNT(*)::int AS count
+        FROM tickets
+        WHERE status = 'closed' AND closed_at >= now() - interval '30 days'
+        GROUP BY day ORDER BY day
+      `),
+    ]);
+    res.json({ created: created.rows, resolved: resolved.rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/leaderboard', requireAuth, async (req, res) => {
+  try {
+    const q = (where) => db.query(`
+      SELECT closed_by_slack_id AS slack_id, COUNT(*)::int AS resolved
+      FROM tickets WHERE status = 'closed' AND closed_by_slack_id IS NOT NULL ${where}
+      GROUP BY closed_by_slack_id ORDER BY resolved DESC LIMIT 10
+    `);
+    const [allTime, thisWeek, today] = await Promise.all([
+      q(''),
+      q("AND closed_at >= now() - interval '7 days'"),
+      q('AND closed_at >= CURRENT_DATE'),
+    ]);
+    res.json({ allTime: allTime.rows, thisWeek: thisWeek.rows, today: today.rows });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -163,15 +209,12 @@ app.get('/api/leaderboard', requireAuth, async (req, res) => {
 
 app.get('/api/tickets', requireAuth, async (req, res) => {
   try {
-    const { status } = req.query;
-    let query = 'SELECT * FROM tickets';
+    const { status, search } = req.query;
     const params = [];
-    if (status && status !== 'all') {
-      query += ' WHERE status = $1';
-      params.push(status);
-    }
-    query += ' ORDER BY msg_ts DESC';
-    const result = await db.query(query, params);
+    let where = 'WHERE 1=1';
+    if (status && status !== 'all') { where += ` AND status = $${params.push(status)}`; }
+    if (search?.trim()) { where += ` AND description ILIKE $${params.push('%' + search.trim() + '%')}`; }
+    const result = await db.query(`SELECT * FROM tickets ${where} ORDER BY msg_ts DESC LIMIT 200`, params);
     res.json(result.rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
