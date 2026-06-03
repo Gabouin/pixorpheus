@@ -385,7 +385,7 @@ async function sendReply(ts) {
 // ── Resolve ───────────────────────────────────────────────────────────────────
 async function resolveTicket(ts) {
   const status = document.getElementById(`reply-status-${ts}`);
-  const btn = document.querySelector(`#ticket-${ts} .btn-resolve`);
+  const btn = document.getElementById(`ticket-${ts}`)?.querySelector('.btn-resolve');
 
   // First click: ask for confirmation inline
   if (btn.dataset.confirming !== '1') {
