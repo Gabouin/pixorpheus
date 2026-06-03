@@ -11,6 +11,7 @@ const db = new Pool({ connectionString: process.env.DATABASE_URL });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
 const app = express();
+app.set('trust proxy', 1); // Railway runs behind a reverse proxy
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(session({
@@ -18,7 +19,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: 'auto', // auto = secure on HTTPS, not secure on HTTP
     maxAge: 7 * 24 * 60 * 60 * 1000,
   },
 }));
@@ -80,7 +81,10 @@ app.get('/auth/callback', async (req, res) => {
       avatar: u['https://slack.com/user_image_72'] || u.picture,
     };
 
-    res.redirect('/');
+    req.session.save(err => {
+      if (err) console.error('[auth] session save error:', err);
+      res.redirect('/');
+    });
   } catch (e) {
     console.error('[auth] callback error:', e.message);
     res.redirect('/login.html?error=auth_failed');
