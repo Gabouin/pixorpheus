@@ -2,62 +2,627 @@ const axios = require("axios");
 require("dotenv").config();
 
 const { App } = require("@slack/bolt");
+const { Pool } = require("pg");
+
+const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  appToken: process.env.SLACK_APP_TOKEN,
-  socketMode: true
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
 
-app.command("/pixl-ping", async ({ command, ack, respond }) => {
+// ─────────────────────────────────────────────
+// HELP CHANNEL — listen for new messages
+// ─────────────────────────────────────────────
+
+app.event('message', async ({ event, client }) => {
+  const isHelpChannel = event.channel === process.env.SLACK_HELP_CHANNEL;
+  const isTicketChannel = event.channel === process.env.SLACK_TICKET_CHANNEL;
+
+  if (!isHelpChannel && !isTicketChannel) return;
+  if (event.bot_id) return;
+
+  const allowedSubtypes = ['file_share', 'me_message', 'thread_broadcast'];
+  if (event.subtype && !allowedSubtypes.includes(event.subtype)) return;
+
+  if (isHelpChannel) {
+    if (event.thread_ts) {
+      await handleMessageInThread(event, client);
+    } else {
+      await handleNewQuestion(event, client);
+    }
+  }
+});
+
+// ─────────────────────────────────────────────
+// NEW QUESTION — create ticket
+// ─────────────────────────────────────────────
+
+async function handleNewQuestion(event, client) {
+  const text = event.text || '[no text — see thread for attachments]';
+
+  // Post in ticket channel (visible to support team only)
+  const ticketMsg = await client.chat.postMessage({
+    channel: process.env.SLACK_TICKET_CHANNEL,
+    text: `New question from <@${event.user}>`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*New ticket from <@${event.user}>*\n>${text}`
+        }
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '✅ Resolve from here' },
+            style: 'primary',
+            action_id: 'resolve_from_ticket_channel',
+            value: event.ts,
+          },
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '🔗 View thread' },
+            action_id: 'view_thread',
+            url: `https://slack.com/app_redirect?channel=${event.channel}&message_ts=${event.ts}`,
+          }
+        ]
+      }
+    ]
+  });
+
+  // Reply in the help channel thread
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts: event.ts,
+    text: "Someone will be here to help you soon!",
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `Someone will be here to help you soon! In the meantime, check out the <${process.env.SLACK_FAQ_URL}|FAQ>.`
+        },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '✅ Mark as resolved' },
+            style: 'primary',
+            action_id: 'mark_resolved',
+            value: event.ts,
+          }
+        ],
+      },
+    ],
+  });
+
+  // Add thinking reaction
+  try {
+    await client.reactions.add({
+      channel: event.channel,
+      name: 'thinking_face',
+      timestamp: event.ts,
+    });
+  } catch (e) {}
+
+  // Save ticket to DB
+  try {
+    await db.query(
+      `INSERT INTO tickets (msg_ts, ticket_msg_ts, description, status, opened_by_slack_id)
+       VALUES ($1, $2, $3, 'open', $4)`,
+      [event.ts, ticketMsg.ts, text, event.user]
+    );
+  } catch (e) {
+    if (e.code === '23505') return; // duplicate, ignore
+    throw e;
+  }
+}
+
+// ─────────────────────────────────────────────
+// THREAD MESSAGE — macros for helpers
+// ─────────────────────────────────────────────
+
+async function handleMessageInThread(event, client) {
+  const ticket = await db.query(
+    `SELECT * FROM tickets WHERE msg_ts = $1`, [event.thread_ts]
+  );
+  if (!ticket.rows[0]) return;
+
+  const isHelper = await checkIsHelper(event.user);
+  const text = event.text || '';
+  const firstWord = text.trim().split(/\s+/)[0]?.toLowerCase();
+
+  if (isHelper && firstWord?.startsWith('?')) {
+    await runMacro(firstWord.slice(1), ticket.rows[0], event, client);
+    return;
+  }
+
+  await db.query(
+    `UPDATE tickets SET last_msg_at = NOW() WHERE msg_ts = $1`,
+    [event.thread_ts]
+  );
+}
+
+// ─────────────────────────────────────────────
+// HELPERS CHECK
+// ─────────────────────────────────────────────
+
+async function checkIsHelper(slackUserId) {
+  const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (admins.includes(slackUserId)) return true;
+  const result = await db.query(
+    `SELECT 1 FROM helpers WHERE slack_user_id = $1 LIMIT 1`,
+    [slackUserId]
+  );
+  return result.rows.length > 0;
+}
+
+// ─────────────────────────────────────────────
+// CHECK IF USER IS IN TICKET CHANNEL
+// ─────────────────────────────────────────────
+
+async function checkIsInTicketChannel(slackUserId, client) {
+  try {
+    let cursor;
+    do {
+      const result = await client.conversations.members({
+        channel: process.env.SLACK_TICKET_CHANNEL,
+        limit: 200,
+        cursor,
+      });
+      if (result.members.includes(slackUserId)) return true;
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
+// MACROS
+// ─────────────────────────────────────────────
+
+const macros = {
+  resolve: async (ticket, event, client) => {
+    await resolveTicket(ticket.msg_ts, event.user, client);
+  },
+  close: async (ticket, event, client) => {
+    await resolveTicket(ticket.msg_ts, event.user, client);
+  },
+  faq: async (ticket, event, client) => {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: ticket.msg_ts,
+      text: `Hey! Check out the FAQ here: <${process.env.SLACK_FAQ_URL}|FAQ> :slightly_smiling_face:`,
+    });
+    await resolveTicket(ticket.msg_ts, event.user, client);
+  },
+  reopen: async (ticket, event, client) => {
+    await reopenTicket(ticket.msg_ts, event.user, client);
+  },
+};
+
+async function runMacro(name, ticket, event, client) {
+  if (macros[name]) {
+    await macros[name](ticket, event, client);
+    try {
+      await client.chat.delete({
+        channel: event.channel,
+        ts: event.ts,
+        token: process.env.SLACK_USER_TOKEN,
+      });
+    } catch (e) {}
+  } else {
+    await client.chat.postEphemeral({
+      channel: event.channel,
+      thread_ts: ticket.msg_ts,
+      user: event.user,
+      text: `\`?${name}\` is not a valid macro. Available macros: \`?resolve\`, \`?faq\`, \`?reopen\``,
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// RESOLVE TICKET
+// ─────────────────────────────────────────────
+
+async function resolveTicket(msgTs, resolverSlackId, client) {
+  const check = await db.query(
+    `SELECT status FROM tickets WHERE msg_ts = $1`, [msgTs]
+  );
+  if (!check.rows[0] || check.rows[0].status === 'closed') return;
+
+  await db.query(
+    `UPDATE tickets SET status = 'closed', closed_at = NOW(),
+     closed_by_slack_id = $1 WHERE msg_ts = $2`,
+    [resolverSlackId, msgTs]
+  );
+
+  await client.chat.postMessage({
+    channel: process.env.SLACK_HELP_CHANNEL,
+    thread_ts: msgTs,
+    text: `Ticket resolved by <@${resolverSlackId}>!`,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `✅ Resolved by <@${resolverSlackId}>! If you have more questions, feel free to open a new thread.` },
+      },
+      {
+        type: 'actions',
+        elements: [{
+          type: 'button',
+          action_id: 'reopen_ticket',
+          text: { type: 'plain_text', text: '🔄 Reopen' },
+          value: msgTs,
+        }],
+      },
+    ],
+  });
+
+  // Update ticket channel message
+  const ticket = await db.query(
+    `SELECT ticket_msg_ts FROM tickets WHERE msg_ts = $1`, [msgTs]
+  );
+  if (ticket.rows[0]?.ticket_msg_ts) {
+    try {
+      await client.chat.update({
+        channel: process.env.SLACK_TICKET_CHANNEL,
+        ts: ticket.rows[0].ticket_msg_ts,
+        text: `✅ Ticket resolved by <@${resolverSlackId}>`,
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `✅ *Ticket resolved by <@${resolverSlackId}>*` }
+          }
+        ]
+      });
+    } catch (e) {}
+  }
+
+  try {
+    await client.reactions.add({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      name: 'white_check_mark',
+      timestamp: msgTs,
+    });
+  } catch (e) {}
+
+  try {
+    await client.reactions.remove({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      name: 'thinking_face',
+      timestamp: msgTs,
+    });
+  } catch (e) {}
+}
+
+// ─────────────────────────────────────────────
+// REOPEN TICKET
+// ─────────────────────────────────────────────
+
+async function reopenTicket(msgTs, reopenerSlackId, client) {
+  const check = await db.query(
+    `SELECT status FROM tickets WHERE msg_ts = $1`, [msgTs]
+  );
+  if (!check.rows[0] || check.rows[0].status === 'open') return;
+
+  await db.query(
+    `UPDATE tickets SET status = 'open', closed_at = NULL,
+     closed_by_slack_id = NULL WHERE msg_ts = $1`,
+    [msgTs]
+  );
+
+  await client.chat.postMessage({
+    channel: process.env.SLACK_HELP_CHANNEL,
+    thread_ts: msgTs,
+    text: `Ticket reopened by <@${reopenerSlackId}>.`,
+  });
+
+  try {
+    await client.reactions.add({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      name: 'thinking_face',
+      timestamp: msgTs,
+    });
+  } catch (e) {}
+
+  try {
+    await client.reactions.remove({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      name: 'white_check_mark',
+      timestamp: msgTs,
+    });
+  } catch (e) {}
+}
+
+// ─────────────────────────────────────────────
+// BUTTON ACTIONS
+// ─────────────────────────────────────────────
+
+// Resolve from help channel (anyone who is author or helper or in ticket channel)
+app.action('mark_resolved', async ({ ack, body, client }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  const resolver = body.user.id;
+  const channelId = body.channel.id;
+
+  let ticket;
+  try {
+    const result = await db.query(
+      `SELECT opened_by_slack_id FROM tickets WHERE msg_ts = $1`, [msgTs]
+    );
+    ticket = result.rows[0];
+  } catch (e) {
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ Database error — could not load the ticket." });
+    return;
+  }
+
+  if (!ticket) {
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ No ticket found for this message. It may not have been saved correctly." });
+    return;
+  }
+
+  const isHelper = await checkIsHelper(resolver);
+  const isAuthor = ticket.opened_by_slack_id === resolver;
+  const isInTicketChannel = await checkIsInTicketChannel(resolver, client);
+
+  if (!isHelper && !isAuthor && !isInTicketChannel) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      thread_ts: msgTs,
+      user: resolver,
+      text: "Only the ticket author, a helper, or a support team member can mark this as resolved.",
+    });
+    return;
+  }
+
+  await resolveTicket(msgTs, resolver, client);
+});
+
+// Resolve from ticket channel (support team only)
+app.action('resolve_from_ticket_channel', async ({ ack, body, client }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  const resolver = body.user.id;
+  const channelId = body.channel.id;
+
+  const isInTicketChannel = await checkIsInTicketChannel(resolver, client);
+  const isHelper = await checkIsHelper(resolver);
+
+  if (!isHelper && !isInTicketChannel) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: resolver,
+      text: "Only support team members can resolve tickets from here.",
+    });
+    return;
+  }
+
+  await resolveTicket(msgTs, resolver, client);
+});
+
+// Reopen ticket
+app.action('reopen_ticket', async ({ ack, body, client }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  const reopener = body.user.id;
+  const channelId = body.channel.id;
+
+  const isHelper = await checkIsHelper(reopener);
+  const isInTicketChannel = await checkIsInTicketChannel(reopener, client);
+
+  if (!isHelper && !isInTicketChannel) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      thread_ts: msgTs,
+      user: reopener,
+      text: "Only helpers or support team members can reopen tickets.",
+    });
+    return;
+  }
+
+  await reopenTicket(msgTs, reopener, client);
+});
+
+// Dummy action for view_thread button (URL buttons don't need handlers but bolt requires ack)
+app.action('view_thread', async ({ ack }) => { await ack(); });
+
+// ─────────────────────────────────────────────
+// SLASH COMMANDS
+// ─────────────────────────────────────────────
+
+// /pixl-ping — check bot latency
+app.command("/pixl-ping", async ({ ack, respond }) => {
   const start = Date.now();
   await ack();
   const latency = Date.now() - start;
-  await respond({ text: `Pong!\nLatency: ${latency}ms` });
+  await respond({ text: `🏓 Pong! Latency: ${latency}ms` });
 });
 
-(async () => {
-  await app.start();
-  console.log("bot is running!");
-})();
-
+// /pixl-help — list all commands
 app.command("/pixl-help", async ({ ack, respond }) => {
   await ack();
   await respond({
-    text:
-`Available Commands:
-/pixl-ping - Check bot latency
-/pixl-help - Show this help message
-/pixl-catfact - Get a cat fact
-/pixl-joke - Get a random joke`
-  }); 
+    text: `*Pixl Bot Commands*\n
+*/pixl-ping* — Check bot latency
+*/pixl-help* — Show this help message
+*/pixl-catfact* — Get a random cat fact
+*/pixl-joke* — Get a random joke
+*/pixl-8ball [question]* — Ask the magic 8-ball
+*/pixl-coinflip* — Flip a coin
+*/pixl-roll [NdN]* — Roll dice (e.g. /pixl-roll 2d6)
+*/pixl-addhelper [@user]* — Add a helper (support team only)
+*/pixl-removehelper [@user]* — Remove a helper (support team only)
+*/pixl-helpers* — List all helpers
+*/pixl-stats* — Show ticket stats`
+  });
 });
 
+// /pixl-catfact — random cat fact
 app.command("/pixl-catfact", async ({ ack, respond }) => {
   await ack();
-
   try {
-    const response = await axios.get("https://catfact.ninja/fact"); 
-    await respond({ text: `Cat Fact:\n${response.data.fact}` });
+    const response = await axios.get("https://catfact.ninja/fact");
+    await respond({ text: `🐱 *Cat Fact:*\n${response.data.fact}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a cat fact." });
   }
 });
 
+// /pixl-joke — random joke
 app.command("/pixl-joke", async ({ ack, respond }) => {
   await ack();
-
   try {
     const response = await axios.get("https://official-joke-api.appspot.com/random_joke");
-    await respond({
-      text:
-`${response.data.setup}
-
-${response.data.punchline}`
-    });
+    await respond({ text: `😂 *${response.data.setup}*\n\n${response.data.punchline}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a joke." });
   }
 });
 
-// more commands can be added here following the same pattern
+// /pixl-8ball — magic 8-ball
+app.command("/pixl-8ball", async ({ command, ack, respond }) => {
+  await ack();
+  const answers = [
+    "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.",
+    "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
+    "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.",
+    "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.",
+    "Don't count on it.", "My reply is no.", "My sources say no.",
+    "Outlook not so good.", "Very doubtful."
+  ];
+  const question = command.text?.trim();
+  if (!question) {
+    await respond({ text: "🎱 Please ask a question! Usage: `/pixl-8ball will it rain today?`" });
+    return;
+  }
+  const answer = answers[Math.floor(Math.random() * answers.length)];
+  await respond({ text: `🎱 *${question}*\n\n_${answer}_` });
+});
+
+// /pixl-coinflip — flip a coin
+app.command("/pixl-coinflip", async ({ ack, respond }) => {
+  await ack();
+  const result = Math.random() < 0.5 ? "Heads 🪙" : "Tails 🪙";
+  await respond({ text: `*Coin flip result:* ${result}` });
+});
+
+// /pixl-roll — roll dice
+app.command("/pixl-roll", async ({ command, ack, respond }) => {
+  await ack();
+  const input = command.text?.trim() || '1d6';
+  const match = input.match(/^(\d+)d(\d+)$/i);
+  if (!match) {
+    await respond({ text: "🎲 Usage: `/pixl-roll 2d6` (number of dice + d + sides)" });
+    return;
+  }
+  const count = Math.min(parseInt(match[1]), 20); // max 20 dice
+  const sides = Math.min(parseInt(match[2]), 1000); // max 1000 sides
+  const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+  const total = rolls.reduce((a, b) => a + b, 0);
+  await respond({
+    text: `🎲 Rolling ${count}d${sides}...\nRolls: ${rolls.join(', ')}\n*Total: ${total}*`
+  });
+});
+
+// /pixl-addhelper — add a helper
+app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
+  await ack();
+  const requesterId = command.user_id;
+  const isAdmin = await checkIsHelper(requesterId); // admins and existing helpers can add
+  const isInTicketChannel = await checkIsInTicketChannel(requesterId, client);
+
+  if (!isAdmin && !isInTicketChannel) {
+    await respond({ text: "❌ Only support team members can add helpers.\n\nIf you are bootstrapping the bot for the first time, add your Slack user ID to the `SLACK_ADMIN_USER_IDS` env variable." });
+    return;
+  }
+
+  // Extract user ID from mention (<@U123456> or U123456)
+  const mention = command.text?.trim();
+  const userId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || mention;
+
+  if (!userId) {
+    await respond({ text: "Usage: `/pixl-addhelper @username`" });
+    return;
+  }
+
+  try {
+    await db.query(
+      `INSERT INTO helpers (slack_user_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+      [userId]
+    );
+    await respond({ text: `✅ <@${userId}> is now a helper!` });
+  } catch (e) {
+    await respond({ text: "❌ Failed to add helper." });
+  }
+});
+
+// /pixl-removehelper — remove a helper
+app.command("/pixl-removehelper", async ({ command, ack, respond, client }) => {
+  await ack();
+  const requesterId = command.user_id;
+  const isInTicketChannel = await checkIsInTicketChannel(requesterId, client);
+  const isHelper = await checkIsHelper(requesterId);
+
+  if (!isHelper && !isInTicketChannel) {
+    await respond({ text: "❌ Only support team members can remove helpers." });
+    return;
+  }
+
+  const mention = command.text?.trim();
+  const userId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || mention;
+
+  if (!userId) {
+    await respond({ text: "Usage: `/pixl-removehelper @username`" });
+    return;
+  }
+
+  await db.query(`DELETE FROM helpers WHERE slack_user_id = $1`, [userId]);
+  await respond({ text: `✅ <@${userId}> is no longer a helper.` });
+});
+
+// /pixl-helpers — list all helpers
+app.command("/pixl-helpers", async ({ ack, respond }) => {
+  await ack();
+  const result = await db.query(`SELECT slack_user_id FROM helpers`);
+  if (result.rows.length === 0) {
+    await respond({ text: "No helpers registered yet." });
+    return;
+  }
+  const list = result.rows.map(r => `• <@${r.slack_user_id}>`).join('\n');
+  await respond({ text: `*Current helpers:*\n${list}` });
+});
+
+// /pixl-stats — ticket stats
+app.command("/pixl-stats", async ({ ack, respond }) => {
+  await ack();
+  const total = await db.query(`SELECT COUNT(*) FROM tickets`);
+  const open = await db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'open'`);
+  const closed = await db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'closed'`);
+  const today = await db.query(
+    `SELECT COUNT(*) FROM tickets WHERE created_at > NOW() - INTERVAL '24 hours'`
+  );
+  await respond({
+    text: `📊 *Ticket Stats*\n
+• Total tickets: ${total.rows[0].count}
+• Open: ${open.rows[0].count}
+• Resolved: ${closed.rows[0].count}
+• Last 24h: ${today.rows[0].count}`
+  });
+});
+
+// ─────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────
+
+(async () => {
+  await app.start(process.env.PORT || 3000);
+  console.log("⚡ Pixl bot is running!");
+})();
