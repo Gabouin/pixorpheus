@@ -154,6 +154,8 @@ async function handleMessageInThread(event, client) {
 // ─────────────────────────────────────────────
 
 async function checkIsHelper(slackUserId) {
+  const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (admins.includes(slackUserId)) return true;
   const result = await db.query(
     `SELECT 1 FROM helpers WHERE slack_user_id = $1 LIMIT 1`,
     [slackUserId]
@@ -167,10 +169,17 @@ async function checkIsHelper(slackUserId) {
 
 async function checkIsInTicketChannel(slackUserId, client) {
   try {
-    const result = await client.conversations.members({
-      channel: process.env.SLACK_TICKET_CHANNEL
-    });
-    return result.members.includes(slackUserId);
+    let cursor;
+    do {
+      const result = await client.conversations.members({
+        channel: process.env.SLACK_TICKET_CHANNEL,
+        limit: 200,
+        cursor,
+      });
+      if (result.members.includes(slackUserId)) return true;
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
+    return false;
   } catch (e) {
     return false;
   }
@@ -342,19 +351,31 @@ app.action('mark_resolved', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
   const resolver = body.user.id;
+  const channelId = body.channel.id;
 
-  const ticket = await db.query(
-    `SELECT opened_by_slack_id FROM tickets WHERE msg_ts = $1`, [msgTs]
-  );
-  if (!ticket.rows[0]) return;
+  let ticket;
+  try {
+    const result = await db.query(
+      `SELECT opened_by_slack_id FROM tickets WHERE msg_ts = $1`, [msgTs]
+    );
+    ticket = result.rows[0];
+  } catch (e) {
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ Database error — could not load the ticket." });
+    return;
+  }
+
+  if (!ticket) {
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ No ticket found for this message. It may not have been saved correctly." });
+    return;
+  }
 
   const isHelper = await checkIsHelper(resolver);
-  const isAuthor = ticket.rows[0].opened_by_slack_id === resolver;
+  const isAuthor = ticket.opened_by_slack_id === resolver;
   const isInTicketChannel = await checkIsInTicketChannel(resolver, client);
 
   if (!isHelper && !isAuthor && !isInTicketChannel) {
     await client.chat.postEphemeral({
-      channel: process.env.SLACK_HELP_CHANNEL,
+      channel: channelId,
       thread_ts: msgTs,
       user: resolver,
       text: "Only the ticket author, a helper, or a support team member can mark this as resolved.",
@@ -370,13 +391,14 @@ app.action('resolve_from_ticket_channel', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
   const resolver = body.user.id;
+  const channelId = body.channel.id;
 
   const isInTicketChannel = await checkIsInTicketChannel(resolver, client);
   const isHelper = await checkIsHelper(resolver);
 
   if (!isHelper && !isInTicketChannel) {
     await client.chat.postEphemeral({
-      channel: process.env.SLACK_TICKET_CHANNEL,
+      channel: channelId,
       user: resolver,
       text: "Only support team members can resolve tickets from here.",
     });
@@ -391,13 +413,14 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
   const reopener = body.user.id;
+  const channelId = body.channel.id;
 
   const isHelper = await checkIsHelper(reopener);
   const isInTicketChannel = await checkIsInTicketChannel(reopener, client);
 
   if (!isHelper && !isInTicketChannel) {
     await client.chat.postEphemeral({
-      channel: process.env.SLACK_HELP_CHANNEL,
+      channel: channelId,
       thread_ts: msgTs,
       user: reopener,
       text: "Only helpers or support team members can reopen tickets.",
@@ -513,11 +536,11 @@ app.command("/pixl-roll", async ({ command, ack, respond }) => {
 app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
   await ack();
   const requesterId = command.user_id;
+  const isAdmin = await checkIsHelper(requesterId); // admins and existing helpers can add
   const isInTicketChannel = await checkIsInTicketChannel(requesterId, client);
-  const isHelper = await checkIsHelper(requesterId);
 
-  if (!isHelper && !isInTicketChannel) {
-    await respond({ text: "❌ Only support team members can add helpers." });
+  if (!isAdmin && !isInTicketChannel) {
+    await respond({ text: "❌ Only support team members can add helpers.\n\nIf you are bootstrapping the bot for the first time, add your Slack user ID to the `SLACK_ADMIN_USER_IDS` env variable." });
     return;
   }
 
