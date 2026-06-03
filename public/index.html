@@ -168,9 +168,19 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  let res;
+  try {
+    res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  } catch (e) {
+    throw new Error('Network error');
+  }
   if (res.status === 401) { location.href = '/login.html'; return null; }
-  return res.json();
+  if (res.status === 403) return { error: 'Access denied' };
+  try {
+    return await res.json();
+  } catch (e) {
+    throw new Error(`Server error (${res.status})`);
+  }
 }
 
 async function getUser(id) {
@@ -333,15 +343,19 @@ async function sendReply(ts) {
   setStatus(status, '', '');
   input.disabled = true;
 
-  const res = await api(`/api/tickets/${ts}/reply`, { method: 'POST', body: JSON.stringify({ text }) });
-  input.disabled = false;
-
-  if (res?.ok) {
-    input.value = '';
-    setStatus(status, '✓ Sent', 'ok');
-    loadThread(ts, true);
-  } else {
-    setStatus(status, `✗ ${res?.error || 'Failed'}`, 'err');
+  try {
+    const res = await api(`/api/tickets/${ts}/reply`, { method: 'POST', body: JSON.stringify({ text }) });
+    input.disabled = false;
+    if (res?.ok) {
+      input.value = '';
+      setStatus(status, '✓ Sent', 'ok');
+      loadThread(ts, true);
+    } else {
+      setStatus(status, `✗ ${res?.error || 'Failed'}`, 'err');
+    }
+  } catch (e) {
+    input.disabled = false;
+    setStatus(status, `✗ ${e.message}`, 'err');
   }
 }
 
@@ -352,15 +366,21 @@ async function resolveTicket(ts) {
   if (!confirm('Mark this ticket as resolved?')) return;
 
   btn.disabled = true;
-  const res = await api(`/api/tickets/${ts}/resolve`, { method: 'POST', body: '{}' });
-  btn.disabled = false;
+  setStatus(status, 'Resolving…', '');
 
-  if (res?.ok) {
-    setStatus(status, '✅ Resolved!', 'ok');
-    stopThreadPoll(ts);
-    setTimeout(() => loadTickets(true), 800);
-  } else {
-    setStatus(status, `✗ ${res?.error || 'Failed'}`, 'err');
+  try {
+    const res = await api(`/api/tickets/${ts}/resolve`, { method: 'POST', body: '{}' });
+    btn.disabled = false;
+    if (res?.ok) {
+      setStatus(status, '✅ Resolved!', 'ok');
+      stopThreadPoll(ts);
+      setTimeout(() => loadTickets(true), 800);
+    } else {
+      setStatus(status, `✗ ${res?.error || 'Unknown error'}`, 'err');
+    }
+  } catch (e) {
+    btn.disabled = false;
+    setStatus(status, `✗ ${e.message}`, 'err');
   }
 }
 

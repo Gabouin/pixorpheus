@@ -29,12 +29,26 @@ app.use(express.static(path.join(__dirname, 'public')));
 // AUTH
 // ─────────────────────────────────────────────
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   if (!req.session.user) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not authenticated' });
     return res.redirect('/login.html');
   }
-  next();
+
+  // Check if user is allowed: must be in SLACK_ADMIN_USER_IDS or in the helpers table
+  const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (admins.includes(req.session.user.id)) return next();
+
+  try {
+    const result = await db.query(
+      'SELECT 1 FROM helpers WHERE slack_user_id = $1 LIMIT 1',
+      [req.session.user.id]
+    );
+    if (result.rows.length > 0) return next();
+  } catch (_) {}
+
+  if (req.path.startsWith('/api/')) return res.status(403).json({ error: 'Access denied — you are not a helper.' });
+  req.session.destroy(() => res.redirect('/login.html?error=access_denied'));
 }
 
 // Redirect to Slack OpenID Connect

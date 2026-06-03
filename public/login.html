@@ -73,7 +73,9 @@
     if (err) {
       const el = document.getElementById('error');
       el.style.display = 'block';
-      el.textContent = err === 'cancelled' ? 'Sign-in was cancelled.' : 'Authentication failed. Please try again.';
+      el.textContent = err === 'cancelled' ? 'Sign-in was cancelled.'
+        : err === 'access_denied' ? 'Access denied — you are not registered as a helper.'
+        : 'Authentication failed. Please try again.';
     }
   </script>
 </body>
