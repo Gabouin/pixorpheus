@@ -363,8 +363,29 @@ async function sendReply(ts) {
 async function resolveTicket(ts) {
   const status = document.getElementById(`reply-status-${ts}`);
   const btn = document.querySelector(`#ticket-${ts} .btn-resolve`);
-  if (!confirm('Mark this ticket as resolved?')) return;
 
+  // First click: ask for confirmation inline
+  if (btn.dataset.confirming !== '1') {
+    btn.dataset.confirming = '1';
+    btn.textContent = 'Sure? Click again';
+    btn.style.background = '#92400e';
+    btn.style.color = '#fde68a';
+    setTimeout(() => {
+      if (btn.dataset.confirming === '1') {
+        btn.dataset.confirming = '';
+        btn.textContent = '✅ Resolve';
+        btn.style.background = '';
+        btn.style.color = '';
+      }
+    }, 3000);
+    return;
+  }
+
+  // Second click: resolve
+  btn.dataset.confirming = '';
+  btn.textContent = '✅ Resolve';
+  btn.style.background = '';
+  btn.style.color = '';
   btn.disabled = true;
   setStatus(status, 'Resolving…', '');
 
