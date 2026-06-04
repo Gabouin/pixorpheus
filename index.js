@@ -552,21 +552,25 @@ app.command("/pixl", async ({ command, ack, client }) => {
       targetId = fromMention;
     } else {
       const username = mention.replace(/^@/, '').toLowerCase();
+      let found = null, cursor;
       try {
-        const list = await client.users.list({ limit: 200 });
-        const found = list.members?.find(m =>
-          m.name?.toLowerCase() === username ||
-          m.profile?.display_name?.toLowerCase() === username
-        );
-        if (!found) {
-          await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `User "${mention}" not found. Try selecting from the @mention dropdown.` });
-          return;
-        }
-        targetId = found.id;
+        do {
+          const page = await client.users.list({ limit: 200, cursor });
+          found = page.members?.find(m =>
+            m.name?.toLowerCase() === username ||
+            m.profile?.display_name?.toLowerCase() === username
+          );
+          cursor = found ? null : page.response_metadata?.next_cursor;
+        } while (!found && cursor);
       } catch (e) {
         await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `User lookup failed: ${e.message}` });
         return;
       }
+      if (!found) {
+        await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `User "${mention}" not found. Try selecting from the @mention dropdown.` });
+        return;
+      }
+      targetId = found.id;
     }
   }
 
