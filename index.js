@@ -668,11 +668,14 @@ async function getAIReply(text) {
           },
           { role: 'user', content: text },
         ],
-        max_tokens: 80,
+        max_tokens: 150,
       },
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
-    return res.data.choices?.[0]?.message?.content?.trim();
+    const content = res.data.choices?.[0]?.message?.content
+      ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
+      ?.trim();
+    if (content) return content;
   } catch (_) {}
   return sassyFallbacks[Math.floor(Math.random() * sassyFallbacks.length)];
 }
