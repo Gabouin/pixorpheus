@@ -547,8 +547,8 @@ app.command("/pixl", async ({ command, ack, client }) => {
   const targetId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || command.user_id;
 
   try {
-    const profile = await client.users.profile.get({ user: targetId });
-    const avatarUrl = profile.profile.image_512 || profile.profile.image_192 || profile.profile.image_72;
+    const result = await client.users.info({ user: targetId });
+    const avatarUrl = result.user.profile.image_512 || result.user.profile.image_192 || result.user.profile.image_72;
 
     if (!avatarUrl) {
       await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "No profile picture found for that user." });
