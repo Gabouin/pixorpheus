@@ -547,7 +547,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
   let targetId = command.user_id;
 
   if (mention) {
-    const fromMention = mention.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1];
+    const fromMention = mention.match(/<@([A-Za-z0-9]+)/)?.[1];
     if (fromMention) {
       targetId = fromMention;
     } else {
@@ -562,6 +562,8 @@ app.command("/pixl", async ({ command, ack, client }) => {
       } catch (_) {}
     }
   }
+
+  await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `DEBUG — text reçu: "${mention}" | targetId: ${targetId}` });
 
   try {
     const result = await client.users.info({ user: targetId });
@@ -590,27 +592,26 @@ app.command("/pixl", async ({ command, ack, client }) => {
       initial_comment: `<@${targetId}> pixelated!`,
     });
 
-    const fileId = uploadResult.files?.[0]?.id;
-    if (fileId) {
-      await client.chat.postEphemeral({
-        channel: command.channel_id,
-        user: command.user_id,
-        text: "Pixelization sent!",
-        blocks: [{
-          type: 'actions',
-          elements: [{
-            type: 'button',
-            text: { type: 'plain_text', text: 'Delete it' },
-            style: 'danger',
-            action_id: 'delete_pixl',
-            value: fileId,
-          }]
+    const fileId = uploadResult?.files?.[0]?.id || uploadResult?.file?.id;
+
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: fileId ? "Sent!" : `Sent! (no fileId found — keys: ${Object.keys(uploadResult || {}).join(', ')})`,
+      blocks: fileId ? [{
+        type: 'actions',
+        elements: [{
+          type: 'button',
+          text: { type: 'plain_text', text: 'Delete it' },
+          style: 'danger',
+          action_id: 'delete_pixl',
+          value: fileId,
         }]
-      });
-    }
+      }] : undefined,
+    });
   } catch (e) {
     const detail = e.data?.needed ? `missing scope: ${e.data.needed}` : e.message;
-    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed to pixelate: ${detail}` });
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed: ${detail}` });
   }
 });
 
