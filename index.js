@@ -651,7 +651,7 @@ async function getAIReply(history) {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
       {
-        model: 'mistralai/mistral-7b-instruct',
+        model: 'meta-llama/llama-3.1-8b-instruct',
         messages: [
           {
             role: 'system',
@@ -713,7 +713,6 @@ app.message(async ({ message, client }) => {
 
       const reply = await getAIReply(history.slice(-6));
       if (reply) {
-        history.push({ role: 'assistant', content: reply });
         await client.chat.postMessage({ channel: entry.channel, thread_ts: threadKey, text: reply });
       }
     } catch (e) {
