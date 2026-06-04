@@ -25,17 +25,12 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─────────────────────────────────────────────
-// AUTH
-// ─────────────────────────────────────────────
-
 async function requireAuth(req, res, next) {
   if (!req.session.user) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not authenticated' });
     return res.redirect('/login.html');
   }
 
-  // Check if user is allowed: must be in SLACK_ADMIN_USER_IDS or in the helpers table
   const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (admins.includes(req.session.user.id)) return next();
 
@@ -51,7 +46,6 @@ async function requireAuth(req, res, next) {
   req.session.destroy(() => res.redirect('/login.html?error=access_denied'));
 }
 
-// Redirect to Slack OpenID Connect
 app.get('/auth/slack', (req, res) => {
   const params = new URLSearchParams({
     response_type: 'code',
@@ -62,7 +56,6 @@ app.get('/auth/slack', (req, res) => {
   res.redirect(`https://slack.com/openid/connect/authorize?${params}`);
 });
 
-// Slack OIDC callback
 app.get('/auth/callback', async (req, res) => {
   const { code, error } = req.query;
   if (error || !code) return res.redirect('/login.html?error=cancelled');
@@ -109,10 +102,6 @@ app.get('/auth/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login.html'));
 });
 
-// ─────────────────────────────────────────────
-// SLACK USER CACHE
-// ─────────────────────────────────────────────
-
 const userCache = new Map();
 
 async function getSlackUser(id) {
@@ -128,10 +117,6 @@ async function getSlackUser(id) {
   setTimeout(() => userCache.delete(id), 5 * 60 * 1000);
   return info;
 }
-
-// ─────────────────────────────────────────────
-// API
-// ─────────────────────────────────────────────
 
 app.get('/api/me', requireAuth, (req, res) => {
   res.json(req.session.user);
@@ -221,7 +206,6 @@ app.get('/api/tickets', requireAuth, async (req, res) => {
   }
 });
 
-// Send a reply to a ticket thread as the logged-in helper
 app.post('/api/tickets/:ts/reply', requireAuth, async (req, res) => {
   const { ts } = req.params;
   const { text } = req.body;
@@ -236,7 +220,6 @@ app.post('/api/tickets/:ts/reply', requireAuth, async (req, res) => {
       icon_url = info.avatar;
     } catch (_) {}
 
-    // chat:write.customize scope lets us override username + icon
     await slack.chat.postMessage({
       channel: process.env.SLACK_HELP_CHANNEL,
       thread_ts: ts,
@@ -251,7 +234,6 @@ app.post('/api/tickets/:ts/reply', requireAuth, async (req, res) => {
   }
 });
 
-// Fetch thread messages from Slack
 app.get('/api/tickets/:ts/thread', requireAuth, async (req, res) => {
   try {
     const result = await slack.conversations.replies({
@@ -277,7 +259,6 @@ app.get('/api/tickets/:ts/thread', requireAuth, async (req, res) => {
   }
 });
 
-// Resolve a ticket from the dashboard
 app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
   const { ts } = req.params;
   const user = req.session.user;
@@ -301,10 +282,10 @@ app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
     await slack.chat.postMessage({
       channel: process.env.SLACK_HELP_CHANNEL,
       thread_ts: ts,
-      text: `✅ Resolved by <@${user.id}>!`,
+      text: ` Resolved by <@${user.id}>!`,
       blocks: [
-        { type: 'section', text: { type: 'mrkdwn', text: `✅ Resolved by <@${user.id}>! If you have more questions, feel free to open a new thread.` } },
-        { type: 'actions', elements: [{ type: 'button', action_id: 'reopen_ticket', text: { type: 'plain_text', text: '🔄 Reopen' }, value: ts }] },
+        { type: 'section', text: { type: 'mrkdwn', text: ` Resolved by <@${user.id}>! If you have more questions, feel free to open a new thread.` } },
+        { type: 'actions', elements: [{ type: 'button', action_id: 'reopen_ticket', text: { type: 'plain_text', text: ' Reopen' }, value: ts }] },
       ],
     });
 
@@ -316,8 +297,8 @@ app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
         await slack.chat.update({
           channel: process.env.SLACK_TICKET_CHANNEL,
           ts: check.rows[0].ticket_msg_ts,
-          text: `✅ Resolved by ${username} via dashboard`,
-          blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ *Resolved by ${username} via dashboard*` } }],
+          text: ` Resolved by ${username} via dashboard`,
+          blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ` *Resolved by ${username} via dashboard*` } }],
         });
       } catch (_) {}
     }
@@ -328,15 +309,11 @@ app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// SERVE DASHBOARD
-// ─────────────────────────────────────────────
-
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = process.env.DASHBOARD_PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`📊 Dashboard running on port ${PORT}`);
+  console.log(` Dashboard running on port ${PORT}`);
 });

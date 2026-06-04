@@ -58,14 +58,14 @@ async function handleNewQuestion(event, client) {
         elements: [
           {
             type: 'button',
-            text: { type: 'plain_text', text: '✅ Resolve from here' },
+            text: { type: 'plain_text', text: 'Resolve from here' },
             style: 'primary',
             action_id: 'resolve_from_ticket_channel',
             value: event.ts,
           },
           {
             type: 'button',
-            text: { type: 'plain_text', text: '🔗 View thread' },
+            text: { type: 'plain_text', text: 'View thread' },
             action_id: 'view_thread',
             url: `https://slack.com/app_redirect?channel=${event.channel}&message_ts=${event.ts}`,
           }
@@ -624,5 +624,11 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
 
 (async () => {
   await app.start(process.env.PORT || 3000);
-  console.log("⚡ Pixl bot is running!");
+  console.log("Pixl bot is running!");
 })();
+
+
+
+
+
+Etienne de la boétie, née en 1530 et mort en 1563 est un auteur humanitse de la renaissanece. il place k'hoe ai ce,te de sa reflewxion et developpe une pensee politique et philosueo moderne en repensant kes termes d al liberté hulaijen? Dasn son cél_bere dsv ecrit vers 1548 le ejuenr etudiant en droit s'étonne de voir de nombreux peuples asservis au profit d'un seul monarque tyrannique. Sa these prjcipal est allors que la dominaruin be reise oas de ka dubaion maus sur le consenrelent dj epupel alorq ue la luberté est nafurekke. 
