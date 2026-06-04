@@ -1,4 +1,4 @@
-const axios = require("axios");
+﻿const axios = require("axios");
 require("dotenv").config();
 
 const { App } = require("@slack/bolt");
@@ -10,10 +10,6 @@ const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
-
-// ─────────────────────────────────────────────
-// HELP CHANNEL — listen for new messages
-// ─────────────────────────────────────────────
 
 app.event('message', async ({ event, client }) => {
   const isHelpChannel = event.channel === process.env.SLACK_HELP_CHANNEL;
@@ -34,24 +30,16 @@ app.event('message', async ({ event, client }) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// NEW QUESTION — create ticket
-// ─────────────────────────────────────────────
-
 async function handleNewQuestion(event, client) {
   const text = event.text || '[no text — see thread for attachments]';
 
-  // Post in ticket channel (visible to support team only)
   const ticketMsg = await client.chat.postMessage({
     channel: process.env.SLACK_TICKET_CHANNEL,
     text: `New question from <@${event.user}>`,
     blocks: [
       {
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*New ticket from <@${event.user}>*\n>${text}`
-        }
+        text: { type: 'mrkdwn', text: `*New ticket from <@${event.user}>*\n>${text}` }
       },
       {
         type: 'actions',
@@ -74,7 +62,6 @@ async function handleNewQuestion(event, client) {
     ]
   });
 
-  // Reply in the help channel thread
   await client.chat.postMessage({
     channel: event.channel,
     thread_ts: event.ts,
@@ -92,7 +79,7 @@ async function handleNewQuestion(event, client) {
         elements: [
           {
             type: 'button',
-            text: { type: 'plain_text', text: '✅ Mark as resolved' },
+            text: { type: 'plain_text', text: 'Mark as resolved' },
             style: 'primary',
             action_id: 'mark_resolved',
             value: event.ts,
@@ -102,7 +89,6 @@ async function handleNewQuestion(event, client) {
     ],
   });
 
-  // Add thinking reaction
   try {
     await client.reactions.add({
       channel: event.channel,
@@ -111,7 +97,6 @@ async function handleNewQuestion(event, client) {
     });
   } catch (e) {}
 
-  // Save ticket to DB
   try {
     await db.query(
       `INSERT INTO tickets (msg_ts, ticket_msg_ts, description, status, opened_by_slack_id)
@@ -119,14 +104,10 @@ async function handleNewQuestion(event, client) {
       [event.ts, ticketMsg.ts, text, event.user]
     );
   } catch (e) {
-    if (e.code === '23505') return; // duplicate, ignore
+    if (e.code === '23505') return;
     throw e;
   }
 }
-
-// ─────────────────────────────────────────────
-// THREAD MESSAGE — macros for helpers
-// ─────────────────────────────────────────────
 
 async function handleMessageInThread(event, client) {
   const ticket = await db.query(
@@ -149,10 +130,6 @@ async function handleMessageInThread(event, client) {
   );
 }
 
-// ─────────────────────────────────────────────
-// HELPERS CHECK
-// ─────────────────────────────────────────────
-
 async function checkIsHelper(slackUserId) {
   const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (admins.includes(slackUserId)) return true;
@@ -162,10 +139,6 @@ async function checkIsHelper(slackUserId) {
   );
   return result.rows.length > 0;
 }
-
-// ─────────────────────────────────────────────
-// CHECK IF USER IS IN TICKET CHANNEL
-// ─────────────────────────────────────────────
 
 async function checkIsInTicketChannel(slackUserId, client) {
   try {
@@ -185,10 +158,6 @@ async function checkIsInTicketChannel(slackUserId, client) {
   }
 }
 
-// ─────────────────────────────────────────────
-// MACROS
-// ─────────────────────────────────────────────
-
 const macros = {
   resolve: async (ticket, event, client) => {
     await resolveTicket(ticket.msg_ts, event.user, client);
@@ -200,7 +169,7 @@ const macros = {
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: ticket.msg_ts,
-      text: `Hey! Check out the FAQ here: <${process.env.SLACK_FAQ_URL}|FAQ> :slightly_smiling_face:`,
+      text: `Hey! Check out the FAQ here: <${process.env.SLACK_FAQ_URL}|FAQ>`,
     });
     await resolveTicket(ticket.msg_ts, event.user, client);
   },
@@ -224,14 +193,10 @@ async function runMacro(name, ticket, event, client) {
       channel: event.channel,
       thread_ts: ticket.msg_ts,
       user: event.user,
-      text: `\`?${name}\` is not a valid macro. Available macros: \`?resolve\`, \`?faq\`, \`?reopen\``,
+      text: `\`?${name}\` is not a valid macro. Available: \`?resolve\`, \`?faq\`, \`?reopen\``,
     });
   }
 }
-
-// ─────────────────────────────────────────────
-// RESOLVE TICKET
-// ─────────────────────────────────────────────
 
 async function resolveTicket(msgTs, resolverSlackId, client) {
   const check = await db.query(
@@ -252,21 +217,20 @@ async function resolveTicket(msgTs, resolverSlackId, client) {
     blocks: [
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: `✅ Resolved by <@${resolverSlackId}>! If you have more questions, feel free to open a new thread.` },
+        text: { type: 'mrkdwn', text: `Resolved by <@${resolverSlackId}>! If you have more questions, feel free to open a new thread.` },
       },
       {
         type: 'actions',
         elements: [{
           type: 'button',
           action_id: 'reopen_ticket',
-          text: { type: 'plain_text', text: '🔄 Reopen' },
+          text: { type: 'plain_text', text: 'Reopen' },
           value: msgTs,
         }],
       },
     ],
   });
 
-  // Update ticket channel message
   const ticket = await db.query(
     `SELECT ticket_msg_ts FROM tickets WHERE msg_ts = $1`, [msgTs]
   );
@@ -275,11 +239,11 @@ async function resolveTicket(msgTs, resolverSlackId, client) {
       await client.chat.update({
         channel: process.env.SLACK_TICKET_CHANNEL,
         ts: ticket.rows[0].ticket_msg_ts,
-        text: `✅ Ticket resolved by <@${resolverSlackId}>`,
+        text: `Ticket resolved by <@${resolverSlackId}>`,
         blocks: [
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: `✅ *Ticket resolved by <@${resolverSlackId}>*` }
+            text: { type: 'mrkdwn', text: `*Ticket resolved by <@${resolverSlackId}>*` }
           }
         ]
       });
@@ -302,10 +266,6 @@ async function resolveTicket(msgTs, resolverSlackId, client) {
     });
   } catch (e) {}
 }
-
-// ─────────────────────────────────────────────
-// REOPEN TICKET
-// ─────────────────────────────────────────────
 
 async function reopenTicket(msgTs, reopenerSlackId, client) {
   const check = await db.query(
@@ -342,11 +302,6 @@ async function reopenTicket(msgTs, reopenerSlackId, client) {
   } catch (e) {}
 }
 
-// ─────────────────────────────────────────────
-// BUTTON ACTIONS
-// ─────────────────────────────────────────────
-
-// Resolve from help channel (anyone who is author or helper or in ticket channel)
 app.action('mark_resolved', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
@@ -360,12 +315,12 @@ app.action('mark_resolved', async ({ ack, body, client }) => {
     );
     ticket = result.rows[0];
   } catch (e) {
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ Database error — could not load the ticket." });
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "Database error — could not load the ticket." });
     return;
   }
 
   if (!ticket) {
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "❌ No ticket found for this message. It may not have been saved correctly." });
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: msgTs, user: resolver, text: "No ticket found for this message." });
     return;
   }
 
@@ -386,7 +341,6 @@ app.action('mark_resolved', async ({ ack, body, client }) => {
   await resolveTicket(msgTs, resolver, client);
 });
 
-// Resolve from ticket channel (support team only)
 app.action('resolve_from_ticket_channel', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
@@ -408,7 +362,6 @@ app.action('resolve_from_ticket_channel', async ({ ack, body, client }) => {
   await resolveTicket(msgTs, resolver, client);
 });
 
-// Reopen ticket
 app.action('reopen_ticket', async ({ ack, body, client }) => {
   await ack();
   const msgTs = body.actions[0].value;
@@ -431,22 +384,14 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
   await reopenTicket(msgTs, reopener, client);
 });
 
-// Dummy action for view_thread button (URL buttons don't need handlers but bolt requires ack)
 app.action('view_thread', async ({ ack }) => { await ack(); });
 
-// ─────────────────────────────────────────────
-// SLASH COMMANDS
-// ─────────────────────────────────────────────
-
-// /pixl-ping — check bot latency
 app.command("/pixl-ping", async ({ ack, respond }) => {
   const start = Date.now();
   await ack();
-  const latency = Date.now() - start;
-  await respond({ text: `🏓 Pong! Latency: ${latency}ms` });
+  await respond({ text: `Pong! Latency: ${Date.now() - start}ms` });
 });
 
-// /pixl-help — list all commands
 app.command("/pixl-help", async ({ ack, respond }) => {
   await ack();
   await respond({
@@ -465,29 +410,26 @@ app.command("/pixl-help", async ({ ack, respond }) => {
   });
 });
 
-// /pixl-catfact — random cat fact
 app.command("/pixl-catfact", async ({ ack, respond }) => {
   await ack();
   try {
     const response = await axios.get("https://catfact.ninja/fact");
-    await respond({ text: `🐱 *Cat Fact:*\n${response.data.fact}` });
+    await respond({ text: `Cat Fact:\n${response.data.fact}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a cat fact." });
   }
 });
 
-// /pixl-joke — random joke
 app.command("/pixl-joke", async ({ ack, respond }) => {
   await ack();
   try {
     const response = await axios.get("https://official-joke-api.appspot.com/random_joke");
-    await respond({ text: `😂 *${response.data.setup}*\n\n${response.data.punchline}` });
+    await respond({ text: `${response.data.setup}\n\n${response.data.punchline}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a joke." });
   }
 });
 
-// /pixl-8ball — magic 8-ball
 app.command("/pixl-8ball", async ({ command, ack, respond }) => {
   await ack();
   const answers = [
@@ -500,51 +442,42 @@ app.command("/pixl-8ball", async ({ command, ack, respond }) => {
   ];
   const question = command.text?.trim();
   if (!question) {
-    await respond({ text: "🎱 Please ask a question! Usage: `/pixl-8ball will it rain today?`" });
+    await respond({ text: "Please ask a question. Usage: `/pixl-8ball will it rain today?`" });
     return;
   }
-  const answer = answers[Math.floor(Math.random() * answers.length)];
-  await respond({ text: `🎱 *${question}*\n\n_${answer}_` });
+  await respond({ text: `*${question}*\n\n_${answers[Math.floor(Math.random() * answers.length)]}_` });
 });
 
-// /pixl-coinflip — flip a coin
 app.command("/pixl-coinflip", async ({ ack, respond }) => {
   await ack();
-  const result = Math.random() < 0.5 ? "Heads 🪙" : "Tails 🪙";
-  await respond({ text: `*Coin flip result:* ${result}` });
+  await respond({ text: `Coin flip: ${Math.random() < 0.5 ? "Heads" : "Tails"}` });
 });
 
-// /pixl-roll — roll dice
 app.command("/pixl-roll", async ({ command, ack, respond }) => {
   await ack();
   const input = command.text?.trim() || '1d6';
   const match = input.match(/^(\d+)d(\d+)$/i);
   if (!match) {
-    await respond({ text: "🎲 Usage: `/pixl-roll 2d6` (number of dice + d + sides)" });
+    await respond({ text: "Usage: `/pixl-roll 2d6`" });
     return;
   }
-  const count = Math.min(parseInt(match[1]), 20); // max 20 dice
-  const sides = Math.min(parseInt(match[2]), 1000); // max 1000 sides
+  const count = Math.min(parseInt(match[1]), 20);
+  const sides = Math.min(parseInt(match[2]), 1000);
   const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
-  const total = rolls.reduce((a, b) => a + b, 0);
-  await respond({
-    text: `🎲 Rolling ${count}d${sides}...\nRolls: ${rolls.join(', ')}\n*Total: ${total}*`
-  });
+  await respond({ text: `Rolling ${count}d${sides}: ${rolls.join(', ')} — *Total: ${rolls.reduce((a, b) => a + b, 0)}*` });
 });
 
-// /pixl-addhelper — add a helper
 app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
   await ack();
   const requesterId = command.user_id;
-  const isAdmin = await checkIsHelper(requesterId); // admins and existing helpers can add
+  const isAdmin = await checkIsHelper(requesterId);
   const isInTicketChannel = await checkIsInTicketChannel(requesterId, client);
 
   if (!isAdmin && !isInTicketChannel) {
-    await respond({ text: "❌ Only support team members can add helpers.\n\nIf you are bootstrapping the bot for the first time, add your Slack user ID to the `SLACK_ADMIN_USER_IDS` env variable." });
+    await respond({ text: "Only support team members can add helpers. To bootstrap, add your Slack user ID to `SLACK_ADMIN_USER_IDS`." });
     return;
   }
 
-  // Extract user ID from mention (<@U123456> or U123456)
   const mention = command.text?.trim();
   const userId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || mention;
 
@@ -554,17 +487,13 @@ app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
   }
 
   try {
-    await db.query(
-      `INSERT INTO helpers (slack_user_id) VALUES ($1) ON CONFLICT DO NOTHING`,
-      [userId]
-    );
-    await respond({ text: `✅ <@${userId}> is now a helper!` });
+    await db.query(`INSERT INTO helpers (slack_user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [userId]);
+    await respond({ text: `<@${userId}> is now a helper.` });
   } catch (e) {
-    await respond({ text: "❌ Failed to add helper." });
+    await respond({ text: "Failed to add helper." });
   }
 });
 
-// /pixl-removehelper — remove a helper
 app.command("/pixl-removehelper", async ({ command, ack, respond, client }) => {
   await ack();
   const requesterId = command.user_id;
@@ -572,7 +501,7 @@ app.command("/pixl-removehelper", async ({ command, ack, respond, client }) => {
   const isHelper = await checkIsHelper(requesterId);
 
   if (!isHelper && !isInTicketChannel) {
-    await respond({ text: "❌ Only support team members can remove helpers." });
+    await respond({ text: "Only support team members can remove helpers." });
     return;
   }
 
@@ -585,10 +514,9 @@ app.command("/pixl-removehelper", async ({ command, ack, respond, client }) => {
   }
 
   await db.query(`DELETE FROM helpers WHERE slack_user_id = $1`, [userId]);
-  await respond({ text: `✅ <@${userId}> is no longer a helper.` });
+  await respond({ text: `<@${userId}> is no longer a helper.` });
 });
 
-// /pixl-helpers — list all helpers
 app.command("/pixl-helpers", async ({ ack, respond }) => {
   await ack();
   const result = await db.query(`SELECT slack_user_id FROM helpers`);
@@ -596,39 +524,22 @@ app.command("/pixl-helpers", async ({ ack, respond }) => {
     await respond({ text: "No helpers registered yet." });
     return;
   }
-  const list = result.rows.map(r => `• <@${r.slack_user_id}>`).join('\n');
-  await respond({ text: `*Current helpers:*\n${list}` });
+  await respond({ text: `*Current helpers:*\n${result.rows.map(r => `• <@${r.slack_user_id}>`).join('\n')}` });
 });
 
-// /pixl-stats — ticket stats
 app.command("/pixl-stats", async ({ ack, respond }) => {
   await ack();
-  const total = await db.query(`SELECT COUNT(*) FROM tickets`);
-  const open = await db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'open'`);
-  const closed = await db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'closed'`);
-  const today = await db.query(
-    `SELECT COUNT(*) FROM tickets WHERE created_at > NOW() - INTERVAL '24 hours'`
-  );
+  const [total, open, closed] = await Promise.all([
+    db.query(`SELECT COUNT(*) FROM tickets`),
+    db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'open'`),
+    db.query(`SELECT COUNT(*) FROM tickets WHERE status = 'closed'`),
+  ]);
   await respond({
-    text: `📊 *Ticket Stats*\n
-• Total tickets: ${total.rows[0].count}
-• Open: ${open.rows[0].count}
-• Resolved: ${closed.rows[0].count}
-• Last 24h: ${today.rows[0].count}`
+    text: `*Ticket Stats*\n• Total: ${total.rows[0].count}\n• Open: ${open.rows[0].count}\n• Resolved: ${closed.rows[0].count}`
   });
 });
 
-// ─────────────────────────────────────────────
-// START
-// ─────────────────────────────────────────────
-
 (async () => {
   await app.start(process.env.PORT || 3000);
-  console.log("Pixl bot is running!");
+  console.log("Pixl bot is running.");
 })();
-
-
-
-
-
-Etienne de la boétie, née en 1530 et mort en 1563 est un auteur humanitse de la renaissanece. il place k'hoe ai ce,te de sa reflewxion et developpe une pensee politique et philosueo moderne en repensant kes termes d al liberté hulaijen? Dasn son cél_bere dsv ecrit vers 1548 le ejuenr etudiant en droit s'étonne de voir de nombreux peuples asservis au profit d'un seul monarque tyrannique. Sa these prjcipal est allors que la dominaruin be reise oas de ka dubaion maus sur le consenrelent dj epupel alorq ue la luberté est nafurekke. 
