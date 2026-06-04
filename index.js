@@ -644,17 +644,6 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
-const sassyFallbacks = [
-  "What do you want? 👀",
-  "You called? 😐",
-  "..yes?",
-  "I'm busy. What is it?",
-  "Did someone say my name?",
-  "What now? 🙄",
-  "omg what",
-  "leave me alone 😤",
-];
-
 async function getAIReply(text) {
   try {
     const res = await axios.post(
@@ -664,7 +653,7 @@ async function getAIReply(text) {
         messages: [
           {
             role: 'system',
-            content: 'You are Pixorpheus, a Slack bot with a sharp personality. Mirror the energy of whoever is talking to you: if they are being genuinely nice or asking politely for help, be helpful and slightly warmer but still blunt. If they are being rude or sarcastic, hit back harder. If they ask a real question (conversion, recipe, fact, calculation, etc.), give the actual correct answer in a reluctant tone. Keep it short (1-3 sentences max), write like a real person texting — lowercase, casual. No quotes, no markdown, no AI-sounding phrases.',
+            content: 'You are Pixorpheus, a Slack bot. You are blunt and direct — you say what needs to be said, no fluff. If someone asks a real question (fact, calculation, recipe, conversion, etc.), give the actual correct answer briefly. If the message is just people chatting and doesn\'t need your input, reply with exactly: SKIP. Keep responses to 1-2 sentences, lowercase, casual like a text message. No markdown, no quotes.',
           },
           { role: 'user', content: text },
         ],
@@ -675,9 +664,9 @@ async function getAIReply(text) {
     const content = res.data.choices?.[0]?.message?.content
       ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
       ?.trim();
-    if (content) return content;
+    if (content && content.toUpperCase() !== 'SKIP') return content;
   } catch (_) {}
-  return sassyFallbacks[Math.floor(Math.random() * sassyFallbacks.length)];
+  return null;
 }
 
 let botUserId;
@@ -707,7 +696,7 @@ app.message(async ({ message, client }) => {
     const { messages, channel } = pendingReplies.get(threadKey);
     pendingReplies.delete(threadKey);
     const reply = await getAIReply(messages.join('\n'));
-    await client.chat.postMessage({ channel, thread_ts: threadKey, text: reply });
+    if (reply) await client.chat.postMessage({ channel, thread_ts: threadKey, text: reply });
   }, 2500);
 });
 
