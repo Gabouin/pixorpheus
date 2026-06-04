@@ -660,7 +660,7 @@ async function getAIReply(text) {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
       {
-        model: 'qwen/qwen3-32b',
+        model: 'qwen/qwen3-32b:no-think',
         messages: [
           {
             role: 'system',
