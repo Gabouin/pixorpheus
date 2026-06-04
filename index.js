@@ -644,20 +644,38 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
-const sassyReplies = [
+const sassyFallbacks = [
   "What do you want? 👀",
   "You called? 😐",
   "..yes?",
   "I'm busy. What is it?",
   "Did someone say my name?",
-  "I heard that.",
   "What now? 🙄",
-  "Not now.",
-  "Go on...",
-  "Yeah?",
   "omg what",
   "leave me alone 😤",
 ];
+
+async function getAIReply(text) {
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'qwen/qwen3-32b',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Pixorpheus, a Slack bot with a sassy, slightly reluctant personality. Someone just mentioned your name. Reply with a short, witty response (1-2 sentences max) that reacts specifically to what they said. Be sarcastic but not mean. Casual tone, no markdown.',
+          },
+          { role: 'user', content: text },
+        ],
+        max_tokens: 80,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    return res.data.choices?.[0]?.message?.content?.trim();
+  } catch (_) {}
+  return sassyFallbacks[Math.floor(Math.random() * sassyFallbacks.length)];
+}
 
 let botUserId;
 
@@ -668,7 +686,7 @@ app.message(async ({ message, client }) => {
                       (botUserId && text.includes(`<@${botUserId}>`));
   if (!mentionsBot) return;
 
-  const reply = sassyReplies[Math.floor(Math.random() * sassyReplies.length)];
+  const reply = await getAIReply(text);
   await client.chat.postMessage({
     channel: message.channel,
     thread_ts: message.thread_ts || message.ts,
