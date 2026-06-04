@@ -663,8 +663,9 @@ async function getAIReply(history) {
     );
     const content = res.data.choices?.[0]?.message?.content
       ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
+      ?.replace(/^skip\s*\n?/i, '')
       ?.trim();
-    if (content && content.toUpperCase() !== 'SKIP') return content;
+    if (content) return content;
   } catch (_) {}
   return null;
 }
