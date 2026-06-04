@@ -681,13 +681,19 @@ async function getAIReply(text) {
 }
 
 let botUserId;
+const activeThreads = new Set();
 
 app.message(async ({ message, client }) => {
   if (message.bot_id || message.subtype) return;
   const text = message.text || '';
+
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
-  if (!mentionsBot) return;
+  const inActiveThread = message.thread_ts && activeThreads.has(message.thread_ts);
+
+  if (!mentionsBot && !inActiveThread) return;
+
+  if (mentionsBot) activeThreads.add(message.thread_ts || message.ts);
 
   const reply = await getAIReply(text);
   await client.chat.postMessage({
