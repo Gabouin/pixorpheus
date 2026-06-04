@@ -711,7 +711,7 @@ app.message(async ({ message, client }) => {
       const history = threadHistory.get(threadKey);
       history.push({ role: 'user', content: entry.messages.join('\n') });
 
-      const reply = await getAIReply(history.slice(-30));
+      const reply = await getAIReply(history.slice(-10));
       if (reply) {
         history.push({ role: 'assistant', content: reply });
         await client.chat.postMessage({ channel: entry.channel, thread_ts: threadKey, text: reply });
@@ -719,7 +719,7 @@ app.message(async ({ message, client }) => {
     } catch (e) {
       console.error('bot reply error:', e.message);
     }
-  }, 2500);
+  }, 1000);
 });
 
 (async () => {
