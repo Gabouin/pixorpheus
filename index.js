@@ -691,6 +691,7 @@ app.message(async ({ message, client }) => {
   if (message.bot_id && message.bot_id === botAppId) return;
   if (message.subtype && message.subtype !== 'bot_message') return;
   const text = message.text || '';
+  if (text.startsWith('##')) return;
 
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
