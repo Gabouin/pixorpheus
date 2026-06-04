@@ -573,7 +573,8 @@ app.command("/pixl", async ({ command, ack, client }) => {
       initial_comment: targetId === command.user_id ? "Your pixelated avatar!" : `<@${targetId}> pixelated!`,
     });
   } catch (e) {
-    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed to pixelate: ${e.message}` });
+    const detail = e.data?.needed ? `missing scope: ${e.data.needed}` : e.message;
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed to pixelate: ${detail}` });
   }
 });
 
