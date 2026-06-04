@@ -644,6 +644,8 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
+const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
+
 async function getAIReply(history) {
   try {
     const res = await axios.post(
@@ -657,7 +659,7 @@ async function getAIReply(history) {
           },
           ...history,
         ],
-        max_tokens: 150,
+        max_tokens: 80,
       },
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
@@ -666,8 +668,10 @@ async function getAIReply(history) {
       ?.replace(/^skip\s*\n?/i, '')
       ?.trim();
     if (content) return content;
-  } catch (_) {}
-  return null;
+  } catch (e) {
+    console.error('AI error:', e.response?.data || e.message);
+  }
+  return shortFallbacks[Math.floor(Math.random() * shortFallbacks.length)];
 }
 
 let botUserId, botAppId;
