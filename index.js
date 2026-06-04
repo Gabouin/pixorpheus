@@ -1,4 +1,5 @@
 ﻿const axios = require("axios");
+const Jimp = require("jimp");
 require("dotenv").config();
 
 const { App } = require("@slack/bolt");
@@ -538,6 +539,46 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
     text: `*Ticket Stats*\n• Total: ${total.rows[0].count}\n• Open: ${open.rows[0].count}\n• Resolved: ${closed.rows[0].count}`
   });
 });
+
+app.command("/pixl", async ({ command, ack, client }) => {
+  await ack();
+
+  const mention = command.text?.trim();
+  const targetId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || command.user_id;
+
+  try {
+    const profile = await client.users.profile.get({ user: targetId });
+    const avatarUrl = profile.profile.image_512 || profile.profile.image_192 || profile.profile.image_72;
+
+    if (!avatarUrl) {
+      await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "No profile picture found for that user." });
+      return;
+    }
+
+    const image = await Jimp.read(avatarUrl);
+    const w = image.getWidth();
+    const h = image.getHeight();
+    const pixelSize = 16;
+
+    image
+      .resize(Math.max(1, Math.floor(w / pixelSize)), Math.max(1, Math.floor(h / pixelSize)), Jimp.RESIZE_NEAREST_NEIGHBOR)
+      .resize(w, h, Jimp.RESIZE_NEAREST_NEIGHBOR);
+
+    const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
+
+    await client.files.uploadV2({
+      channel_id: command.channel_id,
+      file: buffer,
+      filename: `pixl-${targetId}.png`,
+      initial_comment: targetId === command.user_id ? "Your pixelated avatar!" : `<@${targetId}> pixelated!`,
+    });
+  } catch (e) {
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed to pixelate: ${e.message}` });
+  }
+});
+
+
+
 
 (async () => {
   await app.start(process.env.PORT || 3000);
