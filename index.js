@@ -553,13 +553,20 @@ app.command("/pixl", async ({ command, ack, client }) => {
     } else {
       const username = mention.replace(/^@/, '').toLowerCase();
       try {
-        const list = await client.users.list({ limit: 1000 });
+        const list = await client.users.list({ limit: 200 });
         const found = list.members?.find(m =>
           m.name?.toLowerCase() === username ||
           m.profile?.display_name?.toLowerCase() === username
         );
-        if (found) targetId = found.id;
-      } catch (_) {}
+        if (!found) {
+          await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `User "${mention}" not found. Try selecting from the @mention dropdown.` });
+          return;
+        }
+        targetId = found.id;
+      } catch (e) {
+        await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `User lookup failed: ${e.message}` });
+        return;
+      }
     }
   }
 
@@ -616,12 +623,20 @@ app.command("/pixl", async ({ command, ack, client }) => {
 app.action('delete_pixl', async ({ ack, body, client }) => {
   await ack();
   const fileId = body.actions[0].value;
+  const channelId = body.channel.id;
+
+  let msgTs;
   try {
-    await client.files.delete({ file: fileId });
+    const info = await client.files.info({ file: fileId });
+    const shares = info.file?.shares?.public?.[channelId]
+                || info.file?.shares?.private?.[channelId];
+    msgTs = shares?.[0]?.ts;
   } catch (_) {}
-  try {
-    await client.chat.delete({ channel: body.channel.id, ts: body.message.ts });
-  } catch (_) {}
+
+  try { await client.files.delete({ file: fileId }); } catch (_) {}
+  if (msgTs) {
+    try { await client.chat.delete({ channel: channelId, ts: msgTs }); } catch (_) {}
+  }
 });
 
 
