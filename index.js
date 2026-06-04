@@ -651,7 +651,7 @@ async function getAIReply(history) {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
       {
-        model: 'google/gemma-2-9b-it',
+        model: 'anthropic/claude-haiku-4.5',
         messages: [
           {
             role: 'system',
