@@ -671,9 +671,10 @@ async function getAIReply(history) {
 }
 
 let botUserId, botAppId;
-const activeThreads = new Set();
+const activeThreads = new Map(); // threadKey -> lastActiveAt ms
 const pendingReplies = new Map();
 const threadHistory = new Map();
+const THREAD_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 app.message(async ({ message, client }) => {
   if (message.bot_id && message.bot_id === botAppId) return;
@@ -683,10 +684,11 @@ app.message(async ({ message, client }) => {
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
   const threadKey = message.thread_ts || message.ts;
-  const inActiveThread = message.thread_ts && activeThreads.has(message.thread_ts);
+  const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
+  const inActiveThread = lastActive && (Date.now() - lastActive < THREAD_TTL);
 
   if (!mentionsBot && !inActiveThread) return;
-  if (mentionsBot) activeThreads.add(threadKey);
+  activeThreads.set(threadKey, Date.now());
 
   if (!pendingReplies.has(threadKey)) {
     pendingReplies.set(threadKey, { messages: [], channel: message.channel });
