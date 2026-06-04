@@ -544,14 +544,31 @@ app.command("/pixl", async ({ command, ack, client }) => {
   await ack();
 
   const mention = command.text?.trim();
-  const targetId = mention?.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1] || command.user_id;
+  let targetId = command.user_id;
+
+  if (mention) {
+    const fromMention = mention.match(/<@([A-Z0-9]+)(?:\|[^>]+)?>/)?.[1];
+    if (fromMention) {
+      targetId = fromMention;
+    } else {
+      const username = mention.replace(/^@/, '').toLowerCase();
+      try {
+        const list = await client.users.list({ limit: 1000 });
+        const found = list.members?.find(m =>
+          m.name?.toLowerCase() === username ||
+          m.profile?.display_name?.toLowerCase() === username
+        );
+        if (found) targetId = found.id;
+      } catch (_) {}
+    }
+  }
 
   try {
     const result = await client.users.info({ user: targetId });
     const avatarUrl = result.user.profile.image_512 || result.user.profile.image_192 || result.user.profile.image_72;
 
     if (!avatarUrl) {
-      await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "No profile picture found for that user." });
+      await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "No profile picture found." });
       return;
     }
 
@@ -566,16 +583,46 @@ app.command("/pixl", async ({ command, ack, client }) => {
 
     const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
 
-    await client.files.uploadV2({
+    const uploadResult = await client.files.uploadV2({
       channel_id: command.channel_id,
       file: buffer,
       filename: `pixl-${targetId}.png`,
-      initial_comment: targetId === command.user_id ? "Your pixelated avatar!" : `<@${targetId}> pixelated!`,
+      initial_comment: `<@${targetId}> pixelated!`,
     });
+
+    const fileId = uploadResult.files?.[0]?.id;
+    if (fileId) {
+      await client.chat.postEphemeral({
+        channel: command.channel_id,
+        user: command.user_id,
+        text: "Pixelization sent!",
+        blocks: [{
+          type: 'actions',
+          elements: [{
+            type: 'button',
+            text: { type: 'plain_text', text: 'Delete it' },
+            style: 'danger',
+            action_id: 'delete_pixl',
+            value: fileId,
+          }]
+        }]
+      });
+    }
   } catch (e) {
     const detail = e.data?.needed ? `missing scope: ${e.data.needed}` : e.message;
     await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `Failed to pixelate: ${detail}` });
   }
+});
+
+app.action('delete_pixl', async ({ ack, body, client }) => {
+  await ack();
+  const fileId = body.actions[0].value;
+  try {
+    await client.files.delete({ file: fileId });
+  } catch (_) {}
+  try {
+    await client.chat.delete({ channel: body.channel.id, ts: body.message.ts });
+  } catch (_) {}
 });
 
 
