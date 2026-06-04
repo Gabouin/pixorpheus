@@ -563,8 +563,6 @@ app.command("/pixl", async ({ command, ack, client }) => {
     }
   }
 
-  await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `DEBUG — text reçu: "${mention}" | targetId: ${targetId}` });
-
   try {
     const result = await client.users.info({ user: targetId });
     const avatarUrl = result.user.profile.image_512 || result.user.profile.image_192 || result.user.profile.image_72;
@@ -592,13 +590,12 @@ app.command("/pixl", async ({ command, ack, client }) => {
       initial_comment: `<@${targetId}> pixelated!`,
     });
 
-    const fileId = uploadResult?.files?.[0]?.id || uploadResult?.file?.id;
-    const debugFiles = JSON.stringify(uploadResult?.files?.[0] || uploadResult?.file || 'empty');
+    const fileId = uploadResult?.files?.[0]?.files?.[0]?.id;
 
     await client.chat.postEphemeral({
       channel: command.channel_id,
       user: command.user_id,
-      text: fileId ? "Sent!" : `Sent! (no fileId — files[0]: ${debugFiles})`,
+      text: "Sent!",
       blocks: fileId ? [{
         type: 'actions',
         elements: [{
