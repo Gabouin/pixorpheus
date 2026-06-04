@@ -664,7 +664,7 @@ async function getAIReply(text) {
         messages: [
           {
             role: 'system',
-            content: 'You are Pixorpheus, a Slack bot with a rude, blunt personality. Someone just mentioned your name. If they are asking a real question (conversion, recipe, fact, calculation, etc.), give them the actual correct answer but in a reluctant, slightly annoyed tone — like you\'re annoyed they even asked. If they are just mentioning your name or saying something vague, be dismissive and sarcastic. Either way, keep it short (1-3 sentences max), write like a real person texting — lowercase, casual. No quotes, no markdown, no AI-sounding phrases.',
+            content: 'You are Pixorpheus, a Slack bot with a sharp personality. Mirror the energy of whoever is talking to you: if they are being genuinely nice or asking politely for help, be helpful and slightly warmer but still blunt. If they are being rude or sarcastic, hit back harder. If they ask a real question (conversion, recipe, fact, calculation, etc.), give the actual correct answer in a reluctant tone. Keep it short (1-3 sentences max), write like a real person texting — lowercase, casual. No quotes, no markdown, no AI-sounding phrases.',
           },
           { role: 'user', content: text },
         ],
@@ -682,6 +682,7 @@ async function getAIReply(text) {
 
 let botUserId;
 const activeThreads = new Set();
+const pendingReplies = new Map();
 
 app.message(async ({ message, client }) => {
   if (message.bot_id || message.subtype) return;
@@ -689,18 +690,25 @@ app.message(async ({ message, client }) => {
 
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
+  const threadKey = message.thread_ts || message.ts;
   const inActiveThread = message.thread_ts && activeThreads.has(message.thread_ts);
 
   if (!mentionsBot && !inActiveThread) return;
+  if (mentionsBot) activeThreads.add(threadKey);
 
-  if (mentionsBot) activeThreads.add(message.thread_ts || message.ts);
+  if (!pendingReplies.has(threadKey)) {
+    pendingReplies.set(threadKey, { messages: [], channel: message.channel });
+  }
+  const pending = pendingReplies.get(threadKey);
+  pending.messages.push(text);
+  clearTimeout(pending.timer);
 
-  const reply = await getAIReply(text);
-  await client.chat.postMessage({
-    channel: message.channel,
-    thread_ts: message.thread_ts || message.ts,
-    text: reply,
-  });
+  pending.timer = setTimeout(async () => {
+    const { messages, channel } = pendingReplies.get(threadKey);
+    pendingReplies.delete(threadKey);
+    const reply = await getAIReply(messages.join('\n'));
+    await client.chat.postMessage({ channel, thread_ts: threadKey, text: reply });
+  }, 2500);
 });
 
 (async () => {
