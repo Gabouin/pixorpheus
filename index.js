@@ -653,7 +653,7 @@ async function getAIReply(history) {
         messages: [
           {
             role: 'system',
-            content: 'You are Pixorpheus, a Slack bot. You are blunt and direct — you say what needs to be said, no fluff. If someone asks a real question (fact, calculation, recipe, conversion, etc.), give the actual correct answer briefly. If the message is just people chatting and doesn\'t need your input, reply with exactly: SKIP. Keep responses to 1-2 sentences, lowercase, casual like a text message. No markdown, no quotes.',
+            content: 'You are Pixorpheus, a Slack bot. Blunt, direct, no fluff. Answer real questions (facts, calculations, recipes, conversions) accurately but briefly. For everything else, be short and to the point. 1-2 sentences max. Lowercase, casual, like a real text. No markdown, no quotes.',
           },
           ...history,
         ],
@@ -694,17 +694,22 @@ app.message(async ({ message, client }) => {
   clearTimeout(pending.timer);
 
   pending.timer = setTimeout(async () => {
-    const { messages, channel } = pendingReplies.get(threadKey);
-    pendingReplies.delete(threadKey);
+    try {
+      const entry = pendingReplies.get(threadKey);
+      if (!entry) return;
+      pendingReplies.delete(threadKey);
 
-    if (!threadHistory.has(threadKey)) threadHistory.set(threadKey, []);
-    const history = threadHistory.get(threadKey);
-    history.push({ role: 'user', content: messages.join('\n') });
+      if (!threadHistory.has(threadKey)) threadHistory.set(threadKey, []);
+      const history = threadHistory.get(threadKey);
+      history.push({ role: 'user', content: entry.messages.join('\n') });
 
-    const reply = await getAIReply(history.slice(-30));
-    if (reply) {
-      history.push({ role: 'assistant', content: reply });
-      await client.chat.postMessage({ channel, thread_ts: threadKey, text: reply });
+      const reply = await getAIReply(history.slice(-30));
+      if (reply) {
+        history.push({ role: 'assistant', content: reply });
+        await client.chat.postMessage({ channel: entry.channel, thread_ts: threadKey, text: reply });
+      }
+    } catch (e) {
+      console.error('bot reply error:', e.message);
     }
   }, 2500);
 });
