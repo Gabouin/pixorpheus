@@ -397,6 +397,7 @@ app.command("/pixl-help", async ({ ack, respond }) => {
   await ack();
   await respond({
     text: `*Pixl Bot Commands*\n
+*/pixl [@user]* — Pixelate a user's profile picture
 */pixl-ping* — Check bot latency
 */pixl-help* — Show this help message
 */pixl-catfact* — Get a random cat fact
@@ -643,10 +644,43 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
+const sassyReplies = [
+  "What do you want? 👀",
+  "You called? 😐",
+  "..yes?",
+  "I'm busy. What is it?",
+  "Did someone say my name?",
+  "I heard that.",
+  "What now? 🙄",
+  "Not now.",
+  "Go on...",
+  "Yeah?",
+  "omg what",
+  "leave me alone 😤",
+];
 
+let botUserId;
 
+app.message(async ({ message, client }) => {
+  if (message.bot_id || message.subtype) return;
+  const text = message.text || '';
+  const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
+                      (botUserId && text.includes(`<@${botUserId}>`));
+  if (!mentionsBot) return;
+
+  const reply = sassyReplies[Math.floor(Math.random() * sassyReplies.length)];
+  await client.chat.postMessage({
+    channel: message.channel,
+    thread_ts: message.thread_ts || message.ts,
+    text: reply,
+  });
+});
 
 (async () => {
   await app.start(process.env.PORT || 3000);
+  try {
+    const auth = await app.client.auth.test();
+    botUserId = auth.user_id;
+  } catch (_) {}
   console.log("Pixl bot is running.");
 })();
