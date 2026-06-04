@@ -593,11 +593,12 @@ app.command("/pixl", async ({ command, ack, client }) => {
     });
 
     const fileId = uploadResult?.files?.[0]?.id || uploadResult?.file?.id;
+    const debugFiles = JSON.stringify(uploadResult?.files?.[0] || uploadResult?.file || 'empty');
 
     await client.chat.postEphemeral({
       channel: command.channel_id,
       user: command.user_id,
-      text: fileId ? "Sent!" : `Sent! (no fileId found — keys: ${Object.keys(uploadResult || {}).join(', ')})`,
+      text: fileId ? "Sent!" : `Sent! (no fileId — files[0]: ${debugFiles})`,
       blocks: fileId ? [{
         type: 'actions',
         elements: [{
