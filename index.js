@@ -670,13 +670,14 @@ async function getAIReply(history) {
   return null;
 }
 
-let botUserId;
+let botUserId, botAppId;
 const activeThreads = new Set();
 const pendingReplies = new Map();
 const threadHistory = new Map();
 
 app.message(async ({ message, client }) => {
-  if (message.bot_id || message.subtype) return;
+  if (message.bot_id && message.bot_id === botAppId) return;
+  if (message.subtype && message.subtype !== 'bot_message') return;
   const text = message.text || '';
 
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
@@ -720,6 +721,7 @@ app.message(async ({ message, client }) => {
   try {
     const auth = await app.client.auth.test();
     botUserId = auth.user_id;
+    botAppId = auth.bot_id;
   } catch (_) {}
   console.log("Pixl bot is running.");
 })();
