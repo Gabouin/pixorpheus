@@ -725,11 +725,11 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
 });
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const dmHistory = new Map(); // DM channel ID -> [{role, content}]
+const dmHistory = new Map();
 
 const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
-const userMemory = new Map(); // userId -> string[]
+const userMemory = new Map();
 
 async function extractMemory(userId, messages) {
   if (messages.join(' ').length < 30) return;
@@ -798,10 +798,10 @@ async function getAIReply(history, userId = null) {
 }
 
 let botUserId, botAppId;
-const activeThreads = new Map(); // threadKey -> lastActiveAt ms
+const activeThreads = new Map();
 const pendingReplies = new Map();
 const threadHistory = new Map();
-const THREAD_TTL = 2 * 60 * 60 * 1000; // 2 hours
+const THREAD_TTL = 2 * 60 * 60 * 1000;
 
 app.message(async ({ message, client }) => {
   if (message.bot_id && message.bot_id === botAppId) return;
@@ -818,7 +818,6 @@ app.message(async ({ message, client }) => {
 
   if (!isDM && !mentionsBot && !inActiveThread) return;
 
-  // DMs: use Anthropic directly with web search
   if (isDM) {
     const dmKey = message.channel;
     if (!dmHistory.has(dmKey)) dmHistory.set(dmKey, []);
@@ -877,7 +876,6 @@ app.message(async ({ message, client }) => {
   if (mentionsBot) pending.isMention = true;
   clearTimeout(pending.timer);
 
-  // In passive threads, only respond if message is substantial (not just "lol", "ok", etc.)
   if (!mentionsBot && !isDM && inActiveThread) {
     const wordCount = text.trim().split(/\s+/).length;
     if (wordCount < 4 && !text.includes('?')) return;
@@ -919,7 +917,6 @@ app.message(async ({ message, client }) => {
         const postParams = { channel: entry.channel, text: reply };
         if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
-        // async memory extraction — don't await, don't block reply
         extractMemory(entry.userId, entry.messages).catch(() => {});
       }
     } catch (e) {
