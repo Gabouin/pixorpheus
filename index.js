@@ -791,7 +791,9 @@ async function getAIReply(history, userId = null) {
 5. If someone says something dumb, point it out in the most chaotic way possible.
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
-8. Max 2 sentences. Never more.${memoryLine}`,
+8. Max 2 sentences. Never more.
+9. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
+10. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}`,
           },
           ...history,
         ],
@@ -840,8 +842,13 @@ app.message(async ({ message, client }) => {
   if (mentionsBot) pending.isMention = true;
   clearTimeout(pending.timer);
 
-  // Wait longer for passive thread activity so we collect more context before replying
-  const delay = (pending.isMention || isDM) ? 1500 : 7000;
+  // In passive threads, only respond if message is substantial (not just "lol", "ok", etc.)
+  if (!mentionsBot && !isDM && inActiveThread) {
+    const wordCount = text.trim().split(/\s+/).length;
+    if (wordCount < 4 && !text.includes('?')) return;
+  }
+
+  const delay = (pending.isMention || isDM) ? 1500 : 8000;
 
   pending.timer = setTimeout(async () => {
     try {
@@ -870,9 +877,10 @@ app.message(async ({ message, client }) => {
         history.push({ role: 'user', content: entry.messages.join('\n') });
       }
 
-      const reply = await getAIReply(history.slice(-6), entry.userId);
+      const reply = await getAIReply(history.slice(-10), entry.userId);
       if (reply) {
         botStats.aiReplies++;
+        history.push({ role: 'assistant', content: reply });
         const postParams = { channel: entry.channel, text: reply };
         if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
