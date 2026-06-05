@@ -498,10 +498,12 @@ app.command("/pixl-roast", async ({ command, ack, client }) => {
   await ack();
   const mention = command.text?.trim();
   const match = mention?.match(/<@([A-Za-z0-9]+)(?:\|([^>]+))?>/);
-  const targetName = match ? (match[2] || `<@${match[1]}>`) : (mention || `<@${command.user_id}>`);
-  const roast = await getAIReply([{ role: 'user', content: `roast ${targetName} in one brutal, funny, creative sentence. be specific and unhinged.` }]);
+  const targetId = match?.[1] || command.user_id;
+  const targetDisplay = match?.[2] || mention || null;
+  const nameForAI = targetDisplay || 'this person';
+  const roast = await getAIReply([{ role: 'user', content: `write a single brutal, creative, funny roast sentence about "${nameForAI}". do NOT start with "i don't know", "i've never met", or any disclaimer. just go straight in with the roast. be specific and unhinged.` }]);
   botStats.roasts++;
-  await client.chat.postMessage({ channel: command.channel_id, text: roast });
+  await client.chat.postMessage({ channel: command.channel_id, text: `<@${targetId}> ${roast}` });
 });
 
 app.command("/pixl-weather", async ({ command, ack, respond }) => {
