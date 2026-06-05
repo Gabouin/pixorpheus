@@ -480,7 +480,7 @@ app.command("/pixl-weather", async ({ command, ack, respond }) => {
   }
 });
 
-const URBAN_BLOCKED = /\b(fuck|shit|cunt|nigger|nigga|faggot|fag|rape|rapist|pedophile|pedo|dick|cock|pussy|asshole|bitch|whore|slut|porn|suck my|blowjob|handjob|cum|jizz|masturbat|anal|dildo|vibrator|orgasm|erection|boner)\b/i;
+const URBAN_BLOCKED = /\b(fuck|shit|cunt|nigger|nigga|faggot|fag|rape|rapist|pedophile|pedo|dick|cock|pussy|asshole|bitch|whore|slut|porn|blowjob|handjob|cum|jizz|masturbat|anal|dildo|vibrator|orgasm|erection|boner|sex|sexual|intercourse|naked|nude|genitals?|vagina|penis|testicle|scrotum|breast|boob|tit|nipple|butthole|anus|rectal|ejaculat|penetrat|horny|aroused|arousal|lust|lusty|kinky|fetish|bdsm|bondage|dominat|submissive|hentai|naughty|explicit|nsfw|18\+|adult content|finger|fingering|suck|sucking|lick|licking|stroke|stroking|mount|mounting|groan|moan|climax|foreplay|erotic|erotica|pornograph|hardcore|softcore|kink|threesome|orgy|hooker|prostitut|escort|stripper|striptease|onlyfans|creampie|squirt|deepthroat)\b/i;
 
 app.command("/pixl-urban", async ({ command, ack, respond }) => {
   await ack();
