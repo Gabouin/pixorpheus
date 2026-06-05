@@ -409,11 +409,8 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-remind [time] [message]* — Set a reminder (e.g. /pixl-remind 10min lunch)
 */pixl-ping* — Check bot latency
 */pixl-help* — Show this help message
-*/pixl-catfact* — Get a random cat fact
 */pixl-joke* — Get a random joke
-*/pixl-8ball [question]* — Ask the magic 8-ball
 */pixl-coinflip* — Flip a coin
-*/pixl-roll [NdN]* — Roll dice (e.g. /pixl-roll 2d6)
 */pixl-stats* — Bot activity stats
 */pixl-helpstats* — Ticket stats
 */pixl-addhelper [@user]* — Add a helper (support team only)
@@ -423,66 +420,23 @@ _Mention @pixorpheus in any channel or DM the bot to chat with it. Ask it to "su
   });
 });
 
-app.command("/pixl-catfact", async ({ command, ack, respond }) => {
-  await ack();
-  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
-  try {
-    const response = await axios.get("https://catfact.ninja/fact");
-    await respond({ text: `Cat Fact:\n${response.data.fact}${promo}` });
-  } catch (err) {
-    await respond({ text: "Failed to fetch a cat fact." });
-  }
-});
-
 app.command("/pixl-joke", async ({ command, ack, respond }) => {
   await ack();
   const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   try {
-    const response = await axios.get("https://official-joke-api.appspot.com/random_joke");
-    await respond({ text: `${response.data.setup}\n\n${response.data.punchline}${promo}` });
+    const res = await axios.get("https://v2.jokeapi.dev/joke/Any?blacklistFlags=racist,sexist&type=twopart,single");
+    const joke = res.data;
+    const text = joke.type === 'twopart' ? `${joke.setup}\n\n${joke.delivery}` : joke.joke;
+    await respond({ text: `${text}${promo}` });
   } catch (err) {
-    await respond({ text: "Failed to fetch a joke." });
+    await respond({ text: "couldn't fetch a joke lol" });
   }
-});
-
-app.command("/pixl-8ball", async ({ command, ack, respond }) => {
-  await ack();
-  const answers = [
-    "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.",
-    "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
-    "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.",
-    "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.",
-    "Don't count on it.", "My reply is no.", "My sources say no.",
-    "Outlook not so good.", "Very doubtful."
-  ];
-  const question = command.text?.trim();
-  if (!question) {
-    await respond({ text: "Please ask a question. Usage: `/pixl-8ball will it rain today?`" });
-    return;
-  }
-  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
-  await respond({ text: `*${question}*\n\n_${answers[Math.floor(Math.random() * answers.length)]}_${promo}` });
 });
 
 app.command("/pixl-coinflip", async ({ command, ack, respond }) => {
   await ack();
   const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   await respond({ text: `Coin flip: ${Math.random() < 0.5 ? "Heads" : "Tails"}${promo}` });
-});
-
-app.command("/pixl-roll", async ({ command, ack, respond }) => {
-  await ack();
-  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
-  const input = command.text?.trim() || '1d6';
-  const match = input.match(/^(\d+)d(\d+)$/i);
-  if (!match) {
-    await respond({ text: "Usage: `/pixl-roll 2d6`" });
-    return;
-  }
-  const count = Math.min(parseInt(match[1]), 20);
-  const sides = Math.min(parseInt(match[2]), 1000);
-  const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
-  await respond({ text: `Rolling ${count}d${sides}: ${rolls.join(', ')} — *Total: ${rolls.reduce((a, b) => a + b, 0)}*${promo}` });
 });
 
 const botStats = { pixelizations: 0, aiReplies: 0, roasts: 0, reminders: 0 };
