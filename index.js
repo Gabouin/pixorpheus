@@ -738,7 +738,36 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
 
 const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
-async function getAIReply(history) {
+const userMemory = new Map(); // userId -> string[]
+
+async function extractMemory(userId, messages) {
+  if (messages.join(' ').length < 30) return;
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: 'Extract ONE short memorable fact about the user from this conversation (e.g. "likes cats", "works in design", "hates mondays"). Output ONLY the fact as max 8 words, or output nothing if there is nothing worth remembering.' },
+          { role: 'user', content: messages.join('\n') },
+        ],
+        max_tokens: 20,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const fact = res.data.choices?.[0]?.message?.content?.trim();
+    if (fact && fact.length > 3 && fact.length < 60) {
+      const facts = userMemory.get(userId) || [];
+      facts.push(fact);
+      if (facts.length > 8) facts.shift();
+      userMemory.set(userId, facts);
+    }
+  } catch (e) {}
+}
+
+async function getAIReply(history, userId = null) {
+  const facts = userId && userMemory.get(userId);
+  const memoryLine = facts?.length ? `\nWhat you know about this user: ${facts.join(', ')}.` : '';
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
@@ -755,7 +784,7 @@ async function getAIReply(history) {
 5. If someone says something dumb, point it out in the most chaotic way possible.
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
-8. Max 2 sentences. Never more.`,
+8. Max 2 sentences. Never more.${memoryLine}`,
           },
           ...history,
         ],
@@ -797,11 +826,15 @@ app.message(async ({ message, client }) => {
   activeThreads.set(threadKey, Date.now());
 
   if (!pendingReplies.has(threadKey)) {
-    pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts });
+    pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts, userId: message.user, isMention: false });
   }
   const pending = pendingReplies.get(threadKey);
   pending.messages.push(text);
+  if (mentionsBot) pending.isMention = true;
   clearTimeout(pending.timer);
+
+  // Wait longer for passive thread activity so we collect more context before replying
+  const delay = (pending.isMention || isDM) ? 1500 : 7000;
 
   pending.timer = setTimeout(async () => {
     try {
@@ -830,17 +863,19 @@ app.message(async ({ message, client }) => {
         history.push({ role: 'user', content: entry.messages.join('\n') });
       }
 
-      const reply = await getAIReply(history.slice(-6));
+      const reply = await getAIReply(history.slice(-6), entry.userId);
       if (reply) {
         botStats.aiReplies++;
         const postParams = { channel: entry.channel, text: reply };
         if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
+        // async memory extraction — don't await, don't block reply
+        extractMemory(entry.userId, entry.messages).catch(() => {});
       }
     } catch (e) {
       console.error('bot reply error:', e.message);
     }
-  }, 1000);
+  }, delay);
 });
 
 (async () => {
