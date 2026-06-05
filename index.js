@@ -606,7 +606,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
     const image = await Jimp.read(avatarUrl);
     const w = image.getWidth();
     const h = image.getHeight();
-    const pixelSize = 16;
+    const pixelSize = 8;
 
     image
       .resize(Math.max(1, Math.floor(w / pixelSize)), Math.max(1, Math.floor(h / pixelSize)), Jimp.RESIZE_NEAREST_NEIGHBOR)
