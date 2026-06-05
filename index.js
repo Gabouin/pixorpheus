@@ -387,14 +387,19 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
 
 app.action('view_thread', async ({ ack }) => { await ack(); });
 
-app.command("/pixl-ping", async ({ ack, respond }) => {
+const PIXL_CHANNELS = ['C0B5P4N0WHH', 'C0B5UEMF4RW'];
+const PIXL_PROMO = `\n\n_Rejoins <#C0B5P4N0WHH> pour en apprendre plus sur Pixl !_`;
+
+app.command("/pixl-ping", async ({ command, ack, respond }) => {
   const start = Date.now();
   await ack();
-  await respond({ text: `Pong! Latency: ${Date.now() - start}ms` });
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
+  await respond({ text: `Pong! Latency: ${Date.now() - start}ms${promo}` });
 });
 
-app.command("/pixl-help", async ({ ack, respond }) => {
+app.command("/pixl-help", async ({ command, ack, respond }) => {
   await ack();
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   await respond({
     text: `*Pixl Bot Commands*\n
 */pixl [@user]* — Pixelate a user's profile picture
@@ -408,25 +413,27 @@ app.command("/pixl-help", async ({ ack, respond }) => {
 */pixl-addhelper [@user]* — Add a helper (support team only)
 */pixl-removehelper [@user]* — Remove a helper (support team only)
 */pixl-helpers* — List all helpers
-*/pixl-stats* — Show ticket stats`
+*/pixl-stats* — Show ticket stats${promo}`
   });
 });
 
-app.command("/pixl-catfact", async ({ ack, respond }) => {
+app.command("/pixl-catfact", async ({ command, ack, respond }) => {
   await ack();
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   try {
     const response = await axios.get("https://catfact.ninja/fact");
-    await respond({ text: `Cat Fact:\n${response.data.fact}` });
+    await respond({ text: `Cat Fact:\n${response.data.fact}${promo}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a cat fact." });
   }
 });
 
-app.command("/pixl-joke", async ({ ack, respond }) => {
+app.command("/pixl-joke", async ({ command, ack, respond }) => {
   await ack();
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   try {
     const response = await axios.get("https://official-joke-api.appspot.com/random_joke");
-    await respond({ text: `${response.data.setup}\n\n${response.data.punchline}` });
+    await respond({ text: `${response.data.setup}\n\n${response.data.punchline}${promo}` });
   } catch (err) {
     await respond({ text: "Failed to fetch a joke." });
   }
@@ -447,16 +454,19 @@ app.command("/pixl-8ball", async ({ command, ack, respond }) => {
     await respond({ text: "Please ask a question. Usage: `/pixl-8ball will it rain today?`" });
     return;
   }
-  await respond({ text: `*${question}*\n\n_${answers[Math.floor(Math.random() * answers.length)]}_` });
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
+  await respond({ text: `*${question}*\n\n_${answers[Math.floor(Math.random() * answers.length)]}_${promo}` });
 });
 
-app.command("/pixl-coinflip", async ({ ack, respond }) => {
+app.command("/pixl-coinflip", async ({ command, ack, respond }) => {
   await ack();
-  await respond({ text: `Coin flip: ${Math.random() < 0.5 ? "Heads" : "Tails"}` });
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
+  await respond({ text: `Coin flip: ${Math.random() < 0.5 ? "Heads" : "Tails"}${promo}` });
 });
 
 app.command("/pixl-roll", async ({ command, ack, respond }) => {
   await ack();
+  const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   const input = command.text?.trim() || '1d6';
   const match = input.match(/^(\d+)d(\d+)$/i);
   if (!match) {
@@ -466,7 +476,7 @@ app.command("/pixl-roll", async ({ command, ack, respond }) => {
   const count = Math.min(parseInt(match[1]), 20);
   const sides = Math.min(parseInt(match[2]), 1000);
   const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
-  await respond({ text: `Rolling ${count}d${sides}: ${rolls.join(', ')} — *Total: ${rolls.reduce((a, b) => a + b, 0)}*` });
+  await respond({ text: `Rolling ${count}d${sides}: ${rolls.join(', ')} — *Total: ${rolls.reduce((a, b) => a + b, 0)}*${promo}` });
 });
 
 app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
@@ -543,6 +553,15 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
 
 app.command("/pixl", async ({ command, ack, client }) => {
   await ack();
+
+  if (!PIXL_CHANNELS.includes(command.channel_id)) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: `Cette commande est uniquement disponible dans <#C0B5P4N0WHH>. Rejoins-le pour pouvoir l'utiliser !`,
+    });
+    return;
+  }
 
   const mention = command.text?.trim();
   let targetId = command.user_id;
