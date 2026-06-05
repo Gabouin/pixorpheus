@@ -497,11 +497,18 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
 app.command("/pixl-roast", async ({ command, ack, client }) => {
   await ack();
   const mention = command.text?.trim();
-  const match = mention?.match(/<@([A-Za-z0-9]+)(?:\|([^>]+))?>/);
+  const match = mention?.match(/<@([A-Za-z0-9]+)(?:\|[^>]+)?>/);
   const targetId = match?.[1] || command.user_id;
-  const targetDisplay = match?.[2] || mention || null;
-  const nameForAI = targetDisplay || 'this person';
-  const roast = await getAIReply([{ role: 'user', content: `write a single brutal, creative, funny roast sentence about "${nameForAI}". do NOT start with "i don't know", "i've never met", or any disclaimer. just go straight in with the roast. be specific and unhinged.` }]);
+
+  let nameForAI = 'this person';
+  try {
+    const info = await client.users.info({ user: targetId });
+    nameForAI = info.user?.profile?.display_name || info.user?.real_name || info.user?.name || 'this person';
+  } catch (e) {}
+
+  const memoryFacts = userMemory.get(targetId);
+  const memoryHint = memoryFacts?.length ? ` known facts: ${memoryFacts.join(', ')}.` : '';
+  const roast = await getAIReply([{ role: 'user', content: `write a single brutal, creative, funny roast sentence about "${nameForAI}".${memoryHint} do NOT start with "i don't know", "i've never met", or any disclaimer. just go straight in with the roast. be specific and unhinged.` }]);
   botStats.roasts++;
   await client.chat.postMessage({ channel: command.channel_id, text: `<@${targetId}> ${roast}` });
 });
