@@ -11,9 +11,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
     "@slack/bolt": "^4.7.3",
     "axios": "^1.16.1",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "jimp": "^0.22.12",
     "pg": "^8.21.0"
   }
 }

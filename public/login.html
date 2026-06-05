@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixl — Internal Access</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #080808;
+      color: #ccc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 4px;
+      padding: 48px 44px;
+      max-width: 500px;
+      width: 100%;
+    }
+    .tag {
+      display: inline-block;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #7a6020;
+      border: 1px solid #3a2e10;
+      border-radius: 3px;
+      padding: 2px 8px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      margin-bottom: 24px;
+    }
+    .divider {
+      height: 1px;
+      background: #1a1a1a;
+      margin-bottom: 24px;
+    }
+    .notice {
+      font-size: .875rem;
+      line-height: 1.65;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    .notice strong { color: #bbb; font-weight: 600; }
+    .notice:last-of-type { margin-bottom: 32px; }
+    .btn-continue {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      color: #d0d0d0;
+      text-decoration: none;
+      font-size: .875rem;
+      font-weight: 600;
+      padding: 13px 20px;
+      transition: background .15s, border-color .15s, color .15s;
+      cursor: pointer;
+    }
+    .btn-continue:hover {
+      background: #161616;
+      border-color: #444;
+      color: #fff;
+    }
+    .error-msg {
+      margin-top: 16px;
+      font-size: .78rem;
+      color: #9a3333;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="tag">Confidential</div>
+    <h1>Internal Support Dashboard</h1>
+    <div class="divider"></div>
+    <p class="notice">
+      This dashboard contains <strong>sensitive and confidential information</strong>, including private user support conversations and internal team data.
+    </p>
+    <p class="notice">
+      By continuing, you confirm that you will <strong>not share, screenshot, copy, or discuss</strong> the content of this page outside of your authorized team. Unauthorized access or disclosure may result in disciplinary action.
+    </p>
+    <a href="/auth/slack" class="btn-continue">I Understand — Sign in</a>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+  <script>
+    const p = new URLSearchParams(location.search);
+    const err = p.get('error');
+    if (err) {
+      const el = document.getElementById('error-msg');
+      el.style.display = 'block';
+      el.textContent = err === 'cancelled' ? 'Sign-in was cancelled.'
+        : err === 'access_denied' ? 'Access denied. You are not registered as a helper.'
+        : 'Authentication failed. Please try again.';
+    }
+  </script>
+</body>
+</html>
