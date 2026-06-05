@@ -480,7 +480,26 @@ app.command("/pixl-weather", async ({ command, ack, respond }) => {
   }
 });
 
-const URBAN_BLOCKED = /\b(fuck|shit|cunt|nigger|nigga|faggot|fag|rape|rapist|pedophile|pedo|dick|cock|pussy|asshole|bitch|whore|slut|porn|blowjob|handjob|cum|jizz|masturbat|anal|dildo|vibrator|orgasm|erection|boner|sex|sexual|intercourse|naked|nude|genitals?|vagina|penis|testicle|scrotum|breast|boob|tit|nipple|butthole|anus|rectal|ejaculat|penetrat|horny|aroused|arousal|lust|lusty|kinky|fetish|bdsm|bondage|dominat|submissive|hentai|naughty|explicit|nsfw|18\+|adult content|finger|fingering|suck|sucking|lick|licking|stroke|stroking|mount|mounting|groan|moan|climax|foreplay|erotic|erotica|pornograph|hardcore|softcore|kink|threesome|orgy|hooker|prostitut|escort|stripper|striptease|onlyfans|creampie|squirt|deepthroat)\b/i;
+async function isExplicit(text) {
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: 'You are a content moderator. Answer only YES or NO, nothing else.' },
+          { role: 'user', content: `Is this text sexual, explicit, sexually suggestive, or not safe for work?\n\n"${text.slice(0, 300)}"` },
+        ],
+        max_tokens: 5,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const answer = res.data.choices?.[0]?.message?.content?.trim().toUpperCase() || 'YES';
+    return answer.startsWith('YES');
+  } catch (e) {
+    return true; // block if AI fails
+  }
+}
 
 app.command("/pixl-urban", async ({ command, ack, respond }) => {
   await ack();
@@ -488,11 +507,15 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
   if (!term) { await respond({ text: "Usage: `/pixl-urban yolo`" }); return; }
   try {
     const res = await axios.get(`https://api.urbandictionary.com/v0/define?term=${encodeURIComponent(term)}`);
-    const results = res.data.list || [];
-    const clean = results.find(d => !URBAN_BLOCKED.test(d.definition) && !URBAN_BLOCKED.test(d.example || ''));
-    if (!clean) { await respond({ text: `too spicy for this server ngl` }); return; }
-    const definition = clean.definition.replace(/\[|\]/g, '').slice(0, 300);
-    await respond({ text: `*${term}*\n${definition}` });
+    const results = (res.data.list || []).slice(0, 5);
+    for (const def of results) {
+      const text = def.definition.replace(/\[|\]/g, '') + ' ' + (def.example || '');
+      if (!await isExplicit(text)) {
+        await respond({ text: `*${term}*\n${def.definition.replace(/\[|\]/g, '').slice(0, 300)}` });
+        return;
+      }
+    }
+    await respond({ text: `too spicy for this server ngl` });
   } catch (e) {
     await respond({ text: "Urban Dictionary is being dumb, try again." });
   }
