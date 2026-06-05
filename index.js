@@ -480,15 +480,18 @@ app.command("/pixl-weather", async ({ command, ack, respond }) => {
   }
 });
 
+const URBAN_BLOCKED = /\b(fuck|shit|cunt|nigger|nigga|faggot|fag|rape|rapist|pedophile|pedo|dick|cock|pussy|asshole|bitch|whore|slut|porn|suck my|blowjob|handjob|cum|jizz|masturbat|anal|dildo|vibrator|orgasm|erection|boner)\b/i;
+
 app.command("/pixl-urban", async ({ command, ack, respond }) => {
   await ack();
   const term = command.text?.trim();
   if (!term) { await respond({ text: "Usage: `/pixl-urban yolo`" }); return; }
   try {
     const res = await axios.get(`https://api.urbandictionary.com/v0/define?term=${encodeURIComponent(term)}`);
-    const def = res.data.list?.[0];
-    if (!def) { await respond({ text: `No definition found for "${term}".` }); return; }
-    const definition = def.definition.replace(/\[|\]/g, '').slice(0, 300);
+    const results = res.data.list || [];
+    const clean = results.find(d => !URBAN_BLOCKED.test(d.definition) && !URBAN_BLOCKED.test(d.example || ''));
+    if (!clean) { await respond({ text: `too spicy for this server ngl` }); return; }
+    const definition = clean.definition.replace(/\[|\]/g, '').slice(0, 300);
     await respond({ text: `*${term}*\n${definition}` });
   } catch (e) {
     await respond({ text: "Urban Dictionary is being dumb, try again." });
