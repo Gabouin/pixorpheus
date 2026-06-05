@@ -388,7 +388,7 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
 app.action('view_thread', async ({ ack }) => { await ack(); });
 
 const PIXL_CHANNELS = ['C0B5P4N0WHH', 'C0B5UEMF4RW'];
-const PIXL_PROMO = `\n\n_Rejoins <#C0B5P4N0WHH> pour en apprendre plus sur Pixl !_`;
+const PIXL_PROMO = `\n\n_Join <#C0B5P4N0WHH> to discover more Pixl commands!_`;
 
 app.command("/pixl-ping", async ({ command, ack, respond }) => {
   const start = Date.now();
@@ -558,7 +558,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
     await client.chat.postEphemeral({
       channel: command.channel_id,
       user: command.user_id,
-      text: `Cette commande est uniquement disponible dans <#C0B5P4N0WHH>. Rejoins-le pour pouvoir l'utiliser !`,
+      text: `This command is only available in <#C0B5P4N0WHH>. Join it to use it!`,
     });
     return;
   }
