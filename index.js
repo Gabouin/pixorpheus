@@ -403,6 +403,10 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
   await respond({
     text: `*Pixl Bot Commands*\n
 */pixl [@user]* — Pixelate a user's profile picture
+*/pixl-roast [@user]* — Roast someone (or yourself)
+*/pixl-weather [city]* — Get current weather
+*/pixl-urban [word]* — Urban Dictionary definition
+*/pixl-remind [time] [message]* — Set a reminder (e.g. /pixl-remind 10min lunch)
 */pixl-ping* — Check bot latency
 */pixl-help* — Show this help message
 */pixl-catfact* — Get a random cat fact
@@ -410,10 +414,12 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-8ball [question]* — Ask the magic 8-ball
 */pixl-coinflip* — Flip a coin
 */pixl-roll [NdN]* — Roll dice (e.g. /pixl-roll 2d6)
+*/pixl-stats* — Bot activity stats
+*/pixl-helpstats* — Ticket stats
 */pixl-addhelper [@user]* — Add a helper (support team only)
 */pixl-removehelper [@user]* — Remove a helper (support team only)
 */pixl-helpers* — List all helpers
-*/pixl-stats* — Show ticket stats${promo}`
+_Mention @pixorpheus in any channel or DM the bot to chat with it. Ask it to "summarize this thread" to get a recap!_${promo}`
   });
 });
 
@@ -479,6 +485,70 @@ app.command("/pixl-roll", async ({ command, ack, respond }) => {
   await respond({ text: `Rolling ${count}d${sides}: ${rolls.join(', ')} — *Total: ${rolls.reduce((a, b) => a + b, 0)}*${promo}` });
 });
 
+const botStats = { pixelizations: 0, aiReplies: 0, roasts: 0, reminders: 0 };
+
+app.command("/pixl-stats", async ({ ack, respond }) => {
+  await ack();
+  await respond({
+    text: `*Pixorpheus Stats* (since last restart)\n• Pixelizations: ${botStats.pixelizations}\n• AI replies: ${botStats.aiReplies}\n• Roasts delivered: ${botStats.roasts}\n• Reminders set: ${botStats.reminders}`
+  });
+});
+
+app.command("/pixl-roast", async ({ command, ack, client }) => {
+  await ack();
+  const mention = command.text?.trim();
+  const match = mention?.match(/<@([A-Za-z0-9]+)(?:\|([^>]+))?>/);
+  const targetName = match ? (match[2] || `<@${match[1]}>`) : (mention || `<@${command.user_id}>`);
+  const roast = await getAIReply([{ role: 'user', content: `roast ${targetName} in one brutal, funny, creative sentence. be specific and unhinged.` }]);
+  botStats.roasts++;
+  await client.chat.postMessage({ channel: command.channel_id, text: roast });
+});
+
+app.command("/pixl-weather", async ({ command, ack, respond }) => {
+  await ack();
+  const city = command.text?.trim();
+  if (!city) { await respond({ text: "Usage: `/pixl-weather Paris`" }); return; }
+  try {
+    const res = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=3`, { timeout: 5000 });
+    await respond({ text: res.data });
+  } catch (e) {
+    await respond({ text: `Couldn't fetch weather for "${city}".` });
+  }
+});
+
+app.command("/pixl-urban", async ({ command, ack, respond }) => {
+  await ack();
+  const term = command.text?.trim();
+  if (!term) { await respond({ text: "Usage: `/pixl-urban yolo`" }); return; }
+  try {
+    const res = await axios.get(`https://api.urbandictionary.com/v0/define?term=${encodeURIComponent(term)}`);
+    const def = res.data.list?.[0];
+    if (!def) { await respond({ text: `No definition found for "${term}".` }); return; }
+    const definition = def.definition.replace(/\[|\]/g, '').slice(0, 300);
+    await respond({ text: `*${term}*\n${definition}` });
+  } catch (e) {
+    await respond({ text: "Urban Dictionary is being dumb, try again." });
+  }
+});
+
+app.command("/pixl-remind", async ({ command, ack, respond, client }) => {
+  await ack();
+  const match = command.text?.trim().match(/^(\d+)(s|min|h)\s+(.+)$/i);
+  if (!match) { await respond({ text: "Usage: `/pixl-remind 10min grab lunch`" }); return; }
+  const amount = parseInt(match[1]);
+  const unit = match[2].toLowerCase();
+  const msg = match[3];
+  const ms = unit === 's' ? amount * 1000 : unit === 'min' ? amount * 60000 : amount * 3600000;
+  if (ms > 24 * 3600000) { await respond({ text: "Max reminder time is 24h." }); return; }
+  botStats.reminders++;
+  await respond({ text: `got it, reminding you in ${amount}${unit}: _${msg}_` });
+  setTimeout(async () => {
+    try {
+      await client.chat.postMessage({ channel: command.channel_id, text: `<@${command.user_id}> reminder: ${msg}` });
+    } catch (e) {}
+  }, ms);
+});
+
 app.command("/pixl-addhelper", async ({ command, ack, respond, client }) => {
   await ack();
   const requesterId = command.user_id;
@@ -539,7 +609,7 @@ app.command("/pixl-helpers", async ({ ack, respond }) => {
   await respond({ text: `*Current helpers:*\n${result.rows.map(r => `• <@${r.slack_user_id}>`).join('\n')}` });
 });
 
-app.command("/pixl-stats", async ({ ack, respond }) => {
+app.command("/pixl-helpstats", async ({ ack, respond }) => {
   await ack();
   const [total, open, closed] = await Promise.all([
     db.query(`SELECT COUNT(*) FROM tickets`),
@@ -622,6 +692,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
     });
 
     const fileId = uploadResult?.files?.[0]?.files?.[0]?.id;
+    botStats.pixelizations++;
 
     await client.chat.postEphemeral({
       channel: command.channel_id,
@@ -713,17 +784,18 @@ app.message(async ({ message, client }) => {
   const text = message.text || '';
   if (text.startsWith('##')) return;
 
+  const isDM = message.channel_type === 'im';
   const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
   const threadKey = message.thread_ts || message.ts;
   const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
   const inActiveThread = lastActive && (Date.now() - lastActive < THREAD_TTL);
 
-  if (!mentionsBot && !inActiveThread) return;
+  if (!isDM && !mentionsBot && !inActiveThread) return;
   activeThreads.set(threadKey, Date.now());
 
   if (!pendingReplies.has(threadKey)) {
-    pendingReplies.set(threadKey, { messages: [], channel: message.channel });
+    pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts });
   }
   const pending = pendingReplies.get(threadKey);
   pending.messages.push(text);
@@ -735,13 +807,33 @@ app.message(async ({ message, client }) => {
       if (!entry) return;
       pendingReplies.delete(threadKey);
 
+      const combinedText = entry.messages.join('\n').toLowerCase();
+      const isSummaryRequest = combinedText.includes('résume') || combinedText.includes('summarize') || combinedText.includes('summary');
+
       if (!threadHistory.has(threadKey)) threadHistory.set(threadKey, []);
       const history = threadHistory.get(threadKey);
-      history.push({ role: 'user', content: entry.messages.join('\n') });
+
+      if (isSummaryRequest && entry.threadTs) {
+        try {
+          const threadData = await client.conversations.replies({ channel: entry.channel, ts: entry.threadTs, limit: 50 });
+          const msgs = threadData.messages
+            ?.filter(m => !m.bot_id)
+            ?.map(m => `${m.user || 'someone'}: ${m.text || ''}`)
+            ?.join('\n') || '';
+          history.push({ role: 'user', content: `summarize this thread in a few sentences:\n${msgs}` });
+        } catch (e) {
+          history.push({ role: 'user', content: entry.messages.join('\n') });
+        }
+      } else {
+        history.push({ role: 'user', content: entry.messages.join('\n') });
+      }
 
       const reply = await getAIReply(history.slice(-6));
       if (reply) {
-        await client.chat.postMessage({ channel: entry.channel, thread_ts: threadKey, text: reply });
+        botStats.aiReplies++;
+        const postParams = { channel: entry.channel, text: reply };
+        if (!isDM) postParams.thread_ts = threadKey;
+        await client.chat.postMessage(postParams);
       }
     } catch (e) {
       console.error('bot reply error:', e.message);
