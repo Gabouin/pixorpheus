@@ -485,27 +485,6 @@ app.command("/pixl-weather", async ({ command, ack, respond }) => {
   }
 });
 
-async function isExplicit(text) {
-  try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
-        model: 'anthropic/claude-haiku-4.5',
-        messages: [
-          { role: 'system', content: 'You are a content moderator. Answer only YES or NO, nothing else.' },
-          { role: 'user', content: `Is this text sexual, explicit, sexually suggestive, or not safe for work?\n\n"${text.slice(0, 300)}"` },
-        ],
-        max_tokens: 5,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
-    const answer = res.data.choices?.[0]?.message?.content?.trim().toUpperCase() || 'YES';
-    return answer.startsWith('YES');
-  } catch (e) {
-    return true; // block if AI fails
-  }
-}
-
 app.command("/pixl-urban", async ({ command, ack, respond }) => {
   await ack();
   const term = command.text?.trim();
@@ -513,14 +492,36 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
   try {
     const res = await axios.get(`https://api.urbandictionary.com/v0/define?term=${encodeURIComponent(term)}`);
     const results = (res.data.list || []).slice(0, 5);
-    for (const def of results) {
-      const text = def.definition.replace(/\[|\]/g, '') + ' ' + (def.example || '');
-      if (!await isExplicit(text)) {
-        await respond({ text: `*${term}*\n${def.definition.replace(/\[|\]/g, '').slice(0, 300)}` });
-        return;
-      }
+    if (!results.length) { await respond({ text: `no definition found for "${term}"` }); return; }
+
+    const defsText = results.map((d, i) => {
+      const def = d.definition.replace(/\[|\]/g, '').slice(0, 300);
+      const ex = d.example ? ` | ex: ${d.example.replace(/\[|\]/g, '').slice(0, 100)}` : '';
+      return `${i + 1}. ${def}${ex}`;
+    }).join('\n');
+
+    const aiRes = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a content filter for a school-age Slack community. Given Urban Dictionary definitions for a term, pick the most appropriate one (least sexual/explicit/offensive/racist) and return ONLY that definition text, max 300 characters, no intro. If every single definition is sexual, explicitly NSFW, racist, or grossly offensive, reply with only the word: TOO_SPICY',
+          },
+          { role: 'user', content: `Term: "${term}"\n\n${defsText}` },
+        ],
+        max_tokens: 150,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+
+    const picked = aiRes.data.choices?.[0]?.message?.content?.trim();
+    if (!picked || picked.toUpperCase() === 'TOO_SPICY') {
+      await respond({ text: `too spicy for this server ngl` });
+    } else {
+      await respond({ text: `*${term}*\n${picked}` });
     }
-    await respond({ text: `too spicy for this server ngl` });
   } catch (e) {
     await respond({ text: "Urban Dictionary is being dumb, try again." });
   }
