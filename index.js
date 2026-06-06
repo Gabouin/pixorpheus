@@ -853,6 +853,28 @@ async function ensureUserName(userId, client) {
   } catch (e) {}
 }
 
+async function seedThreadHistory(threadKey, channel, threadTs, client) {
+  if (threadHistory.has(threadKey) && threadHistory.get(threadKey).length > 0) return;
+  try {
+    const data = await client.conversations.replies({ channel, ts: threadTs, limit: 40 });
+    const seeded = (data.messages || [])
+      .filter(m => m.text)
+      .map(m => ({ role: m.bot_id ? 'assistant' : 'user', content: m.text }));
+    if (seeded.length) threadHistory.set(threadKey, seeded);
+  } catch (e) {}
+}
+
+async function seedDMHistory(channel, client) {
+  try {
+    const data = await client.conversations.history({ channel, limit: 20 });
+    const seeded = (data.messages || [])
+      .reverse()
+      .filter(m => m.text)
+      .map(m => ({ role: m.bot_id ? 'assistant' : 'user', content: m.text }));
+    if (seeded.length) dmHistory.set(channel, seeded);
+  } catch (e) {}
+}
+
 async function extractMemory(userId, messages) {
   const combined = messages.join('\n');
   if (combined.length < 10) return;
@@ -955,6 +977,7 @@ app.message(async ({ message, client }) => {
 
   if (isDM) {
     const dmKey = message.channel;
+    if (!dmHistory.has(dmKey)) await seedDMHistory(dmKey, client);
     if (!dmHistory.has(dmKey)) dmHistory.set(dmKey, []);
     const hist = dmHistory.get(dmKey);
     hist.push({ role: 'user', content: text });
@@ -1041,6 +1064,9 @@ app.message(async ({ message, client }) => {
       const isSummaryRequest = combinedText.includes('résume') || combinedText.includes('summarize') || combinedText.includes('summary');
 
       if (!threadHistory.has(threadKey)) threadHistory.set(threadKey, []);
+      if (entry.threadTs && !threadHistory.get(threadKey).length) {
+        await seedThreadHistory(threadKey, entry.channel, entry.threadTs, client);
+      }
       const history = threadHistory.get(threadKey);
 
       if (isSummaryRequest && entry.threadTs) {
