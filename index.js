@@ -905,7 +905,37 @@ async function extractMemory(userId, messages) {
 
 const GABIN_ID = 'U0A2SJ7B739';
 
-async function getAIReply(history, userId = null, threadCtx = null) {
+async function shouldChimeIn(messages) {
+  const combined = messages.join('\n');
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          {
+            role: 'system',
+            content: `You are deciding whether Pixorpheus (a sarcastic Slack bot) should jump into this conversation. Reply with exactly one word:
+DIRECT — they are clearly talking to the bot, asking it something, or expecting a response from it
+CHIME — they're talking among themselves but there's a genuinely funny/obvious opportunity for a 1-line sarcastic interjection
+SKIP — they're just chatting, the bot would be annoying or irrelevant here`,
+          },
+          { role: 'user', content: combined },
+        ],
+        max_tokens: 5,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const word = res.data.choices?.[0]?.message?.content?.trim().toUpperCase().split(/\s/)[0];
+    if (word === 'DIRECT') return 'direct';
+    if (word === 'CHIME') return 'chime';
+    return 'skip';
+  } catch (e) {
+    return 'skip';
+  }
+}
+
+async function getAIReply(history, userId = null, threadCtx = null, chimeMode = false) {
   const facts = userId && userMemory.get(userId);
   const memoryLine = facts?.length ? `\nWhat you know about this user: ${facts.join(', ')}.` : '';
   const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
@@ -916,6 +946,9 @@ async function getAIReply(history, userId = null, threadCtx = null) {
     if (threadCtx.lastBotReply) threadLine += `\nYour last reply in this thread was: "${threadCtx.lastBotReply}" — do NOT repeat or rephrase it.`;
     if (threadCtx.botInvited) threadLine += `\nYou were directly mentioned/invited into this conversation.`;
   }
+  const chimeLine = chimeMode
+    ? `\nSITUATION: You are jumping in UNINVITED. These people were NOT talking to you. You spotted an opening for a quick jab or reaction. Keep it to 1-5 words max — a one-liner, a reaction, a roast. Do NOT try to be helpful or answer anything. If there's genuinely no good opening, reply SKIP.`
+    : '';
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
@@ -936,7 +969,7 @@ async function getAIReply(history, userId = null, threadCtx = null) {
 8. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, highkey, no cap, imo, rn, yk, istg, slay, mid, sus, periodt, deadass, literally, etc. Don't overdo it — just sprinkle it in like a real person would.
 9. Length rule: default to SHORT — 1 sentence or a few words. But if the question genuinely needs a longer answer (explanation, steps, code, list of options...), give a complete answer — never cut it off mid-thought. The goal is "as short as possible, as long as necessary." Never pad or ramble.
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
-11. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}${programLine}${threadLine}`,
+11. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}${programLine}${threadLine}${chimeLine}`,
           },
           ...history,
         ],
@@ -959,6 +992,7 @@ let botUserId, botAppId;
 const activeThreads = new Map();
 const pendingReplies = new Map();
 const threadHistory = new Map();
+const mutedThreads = new Set();
 const THREAD_TTL = 2 * 60 * 60 * 1000;
 
 app.message(async ({ message, client }) => {
@@ -1085,12 +1119,28 @@ app.message(async ({ message, client }) => {
         history.push({ role: 'user', content: entry.messages.join('\n') });
       }
 
-      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey));
+      if (mutedThreads.has(threadKey) && !entry.isMention) return;
+
+      let chimeMode = false;
+      if (!entry.isMention) {
+        const vibe = await shouldChimeIn(entry.messages);
+        if (vibe === 'skip') return;
+        if (vibe === 'chime') chimeMode = true;
+      }
+
+      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode);
       if (reply) {
         botStats.aiReplies++;
         history.push({ role: 'assistant', content: reply });
         const postParams = { channel: entry.channel, text: reply };
-        if (!isDM) postParams.thread_ts = threadKey;
+        if (!isDM) {
+          postParams.thread_ts = threadKey;
+          const muteLabel = mutedThreads.has(threadKey) ? '💬 let me back' : '🤫 shut up';
+          postParams.blocks = [
+            { type: 'section', text: { type: 'mrkdwn', text: reply } },
+            { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: muteLabel }, action_id: 'toggle_thread_mute', value: threadKey }] },
+          ];
+        }
         await client.chat.postMessage(postParams);
         extractMemory(entry.userId, entry.messages).catch(() => {});
         const tmAfter = threadMemory.get(threadKey);
@@ -1101,6 +1151,25 @@ app.message(async ({ message, client }) => {
       console.error('bot reply error:', e.message);
     }
   }, delay);
+});
+
+app.action('toggle_thread_mute', async ({ ack, body, client }) => {
+  await ack();
+  const threadKey = body.actions[0].value;
+  const channelId = body.channel.id;
+  const userId = body.user.id;
+
+  if (mutedThreads.has(threadKey)) {
+    mutedThreads.delete(threadKey);
+    const tm = threadMemory.get(threadKey);
+    if (tm) tm.botInvited = true;
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "back on the mic 😤" });
+  } else {
+    mutedThreads.add(threadKey);
+    const tm = threadMemory.get(threadKey);
+    if (tm) tm.botInvited = false;
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "ok i'll zip it 🫡 — click 🤫 on any of my messages to let me back" });
+  }
 });
 
 (async () => {
