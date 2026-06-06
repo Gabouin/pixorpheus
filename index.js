@@ -1,5 +1,7 @@
 ﻿const axios = require("axios");
 const Jimp = require("jimp");
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 
 const { App } = require("@slack/bolt");
@@ -729,30 +731,48 @@ const dmHistory = new Map();
 
 const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
+const MEMORY_FILE = path.join(__dirname, 'user_memory.json');
 const userMemory = new Map();
 
+function loadMemory() {
+  try {
+    const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+    for (const [k, v] of Object.entries(data)) userMemory.set(k, v);
+  } catch (e) {}
+}
+
+function saveMemory() {
+  try {
+    fs.writeFileSync(MEMORY_FILE, JSON.stringify(Object.fromEntries(userMemory), null, 2));
+  } catch (e) {}
+}
+
+loadMemory();
+
 async function extractMemory(userId, messages) {
-  if (messages.join(' ').length < 30) return;
+  const combined = messages.join('\n');
+  if (combined.length < 10) return;
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
       {
         model: 'anthropic/claude-haiku-4.5',
         messages: [
-          { role: 'system', content: 'Extract ONE short memorable fact about the user from this conversation (e.g. "likes cats", "works in design", "hates mondays"). Output ONLY the fact as max 8 words, or output nothing if there is nothing worth remembering.' },
-          { role: 'user', content: messages.join('\n') },
+          { role: 'system', content: 'Extract up to 3 short memorable facts about the user from these messages (e.g. "likes cats", "works in design", "hates mondays", "studying CS", "lives in Paris"). Output each fact on its own line, max 8 words each. Output nothing if there is nothing worth remembering. No bullet points, no numbers.' },
+          { role: 'user', content: combined },
         ],
-        max_tokens: 20,
+        max_tokens: 60,
       },
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
-    const fact = res.data.choices?.[0]?.message?.content?.trim();
-    if (fact && fact.length > 3 && fact.length < 60) {
-      const facts = userMemory.get(userId) || [];
-      facts.push(fact);
-      if (facts.length > 8) facts.shift();
-      userMemory.set(userId, facts);
-    }
+    const raw = res.data.choices?.[0]?.message?.content?.trim();
+    if (!raw) return;
+    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 60);
+    if (!newFacts.length) return;
+    const existing = userMemory.get(userId) || [];
+    const merged = [...existing, ...newFacts];
+    userMemory.set(userId, merged.slice(-12));
+    saveMemory();
   } catch (e) {}
 }
 
