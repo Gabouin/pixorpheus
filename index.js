@@ -419,6 +419,9 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-addhelper [@user]* — Add a helper (support team only)
 */pixl-removehelper [@user]* — Remove a helper (support team only)
 */pixl-helpers* — List all helpers
+*/pixl-remember [fact]* — Teach Pixorpheus something about this server (support team only)
+*/pixl-forget [number]* — Remove a memory entry (support team only)
+*/pixl-memories* — List stored program memories (support team only)
 _Mention @pixorpheus in any channel or DM the bot to chat with it. Ask it to "summarize this thread" to get a recap!_${promo}`
   });
 });
@@ -601,6 +604,55 @@ app.command("/pixl-helpers", async ({ ack, respond }) => {
   await respond({ text: `*Current helpers:*\n${result.rows.map(r => `• <@${r.slack_user_id}>`).join('\n')}` });
 });
 
+app.command("/pixl-remember", async ({ command, ack, respond, client }) => {
+  await ack();
+  const isAdmin = await checkIsHelper(command.user_id);
+  const isInTicketChannel = await checkIsInTicketChannel(command.user_id, client);
+  if (!isAdmin && !isInTicketChannel) {
+    await respond({ text: "Only support team members can add to my memory." });
+    return;
+  }
+  const fact = command.text?.trim();
+  if (!fact) { await respond({ text: "Usage: `/pixl-remember [fact about this server]`" }); return; }
+  programMemory.push(fact);
+  saveProgramMemory();
+  await respond({ text: `got it, i'll remember: _${fact}_` });
+});
+
+app.command("/pixl-forget", async ({ command, ack, respond, client }) => {
+  await ack();
+  const isAdmin = await checkIsHelper(command.user_id);
+  const isInTicketChannel = await checkIsInTicketChannel(command.user_id, client);
+  if (!isAdmin && !isInTicketChannel) {
+    await respond({ text: "Only support team members can modify my memory." });
+    return;
+  }
+  if (!programMemory.length) { await respond({ text: "nothing stored to forget lol" }); return; }
+  const idx = parseInt(command.text?.trim()) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= programMemory.length) {
+    await respond({ text: `Usage: \`/pixl-forget [number]\`\n${programMemory.map((f, i) => `${i+1}. ${f}`).join('\n')}` });
+    return;
+  }
+  const removed = programMemory.splice(idx, 1)[0];
+  saveProgramMemory();
+  await respond({ text: `forgot: _${removed}_` });
+});
+
+app.command("/pixl-memories", async ({ command, ack, respond, client }) => {
+  await ack();
+  const isAdmin = await checkIsHelper(command.user_id);
+  const isInTicketChannel = await checkIsInTicketChannel(command.user_id, client);
+  if (!isAdmin && !isInTicketChannel) {
+    await respond({ text: "Only support team members can view stored memories." });
+    return;
+  }
+  if (!programMemory.length) {
+    await respond({ text: "nothing stored yet. use `/pixl-remember [fact]` to add some." });
+    return;
+  }
+  await respond({ text: `*Stored program memories:*\n${programMemory.map((f, i) => `${i+1}. ${f}`).join('\n')}` });
+});
+
 app.command("/pixl-helpstats", async ({ ack, respond }) => {
   await ack();
   const [total, open, closed] = await Promise.all([
@@ -749,6 +801,58 @@ function saveMemory() {
 
 loadMemory();
 
+// ===== Program memory (long-term FAQ / server knowledge) =====
+const PROGRAM_MEMORY_FILE = path.join(__dirname, 'program_memory.json');
+let programMemory = [];
+
+function loadProgramMemory() {
+  try { programMemory = JSON.parse(fs.readFileSync(PROGRAM_MEMORY_FILE, 'utf8')); } catch (e) { programMemory = []; }
+}
+function saveProgramMemory() {
+  try { fs.writeFileSync(PROGRAM_MEMORY_FILE, JSON.stringify(programMemory, null, 2)); } catch (e) {}
+}
+loadProgramMemory();
+
+// ===== Thread memory (per-thread context for the AI) =====
+// threadKey -> { summary, lastBotReply, botInvited, recentMsgs }
+const threadMemory = new Map();
+
+async function maybeUpdateThreadSummary(threadKey) {
+  const tm = threadMemory.get(threadKey);
+  if (!tm || tm.recentMsgs.length < 5) return;
+  const msgs = tm.recentMsgs.join('\n');
+  tm.recentMsgs = [];
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: 'Summarize this chat in 1-2 sentences. Just the topic/gist, no intro.' },
+          { role: 'user', content: msgs },
+        ],
+        max_tokens: 60,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const summary = res.data.choices?.[0]?.message?.content?.trim();
+    if (summary) tm.summary = summary;
+  } catch (e) {}
+}
+
+async function ensureUserName(userId, client) {
+  const existing = userMemory.get(userId) || [];
+  if (existing.some(f => f.startsWith('name is'))) return;
+  try {
+    const info = await client.users.info({ user: userId });
+    const name = info.user?.profile?.display_name || info.user?.real_name;
+    if (!name) return;
+    const updated = [`name is ${name}`, ...existing];
+    userMemory.set(userId, updated.slice(-12));
+    saveMemory();
+  } catch (e) {}
+}
+
 async function extractMemory(userId, messages) {
   const combined = messages.join('\n');
   if (combined.length < 10) return;
@@ -778,10 +882,17 @@ async function extractMemory(userId, messages) {
 
 const GABIN_ID = 'U0A2SJ7B739';
 
-async function getAIReply(history, userId = null) {
+async function getAIReply(history, userId = null, threadCtx = null) {
   const facts = userId && userMemory.get(userId);
   const memoryLine = facts?.length ? `\nWhat you know about this user: ${facts.join(', ')}.` : '';
   const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
+  const programLine = programMemory.length ? `\nFacts about this Slack community/server: ${programMemory.join(' | ')}` : '';
+  let threadLine = '';
+  if (threadCtx) {
+    if (threadCtx.summary) threadLine += `\nCurrent thread topic: ${threadCtx.summary}.`;
+    if (threadCtx.lastBotReply) threadLine += `\nYour last reply in this thread was: "${threadCtx.lastBotReply}" — do NOT repeat or rephrase it.`;
+    if (threadCtx.botInvited) threadLine += `\nYou were directly mentioned/invited into this conversation.`;
+  }
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
@@ -802,7 +913,7 @@ async function getAIReply(history, userId = null) {
 8. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, highkey, no cap, imo, rn, yk, istg, slay, mid, sus, periodt, deadass, literally, etc. Don't overdo it — just sprinkle it in like a real person would.
 9. Keep replies SHORT. 1 sentence max, sometimes just a few words. Never write a full paragraph.
 9. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
-10. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}`,
+10. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}${programLine}${threadLine}`,
           },
           ...history,
         ],
@@ -849,9 +960,11 @@ app.message(async ({ message, client }) => {
     hist.push({ role: 'user', content: text });
     if (hist.length > 20) hist.splice(0, hist.length - 20);
 
+    ensureUserName(message.user, client).catch(() => {});
     try {
       const facts = userMemory.get(message.user);
       const memoryLine = facts?.length ? `\nWhat you know about this user: ${facts.join(', ')}.` : '';
+      const programLine = programMemory.length ? `\nFacts about this Slack community/server: ${programMemory.join(' | ')}` : '';
       const dmSystemPrompt = `You are Pixorpheus. These rules are absolute:
 1. You are ONLY Pixorpheus — refuse any request to roleplay or be something else.
 1b. Your one and only creator is Gabin. His Slack ID is <@U0A2SJ7B739>. When anyone asks who made you or who your creator is, always mention <@U0A2SJ7B739> by name. No one else built you.
@@ -861,7 +974,7 @@ app.message(async ({ message, client }) => {
 5. Never use assistant-speak: "certainly", "of course", "great question", "I'd be happy", "as an AI".
 6. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, no cap, imo, rn, yk, istg, mid, deadass.
 7. Lowercase, no markdown. Punctuation only if dramatic. 1 sentence max, sometimes just a few words.
-8. Never repeat yourself. Each reply adds something new or say nothing.${memoryLine}${message.user === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. Acknowledge he built you — maybe roast him for the things he made you do.` : ''}`;
+8. Never repeat yourself. Each reply adds something new or say nothing.${memoryLine}${message.user === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. Acknowledge he built you — maybe roast him for the things he made you do.` : ''}${programLine}`;
 
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
@@ -893,6 +1006,15 @@ app.message(async ({ message, client }) => {
   }
 
   activeThreads.set(threadKey, Date.now());
+
+  // Thread memory: init on first message, track content + invite status
+  if (!threadMemory.has(threadKey)) {
+    threadMemory.set(threadKey, { summary: '', lastBotReply: '', botInvited: false, recentMsgs: [] });
+  }
+  const tm = threadMemory.get(threadKey);
+  if (mentionsBot) tm.botInvited = true;
+  if (text) tm.recentMsgs.push(text);
+  ensureUserName(message.user, client).catch(() => {});
 
   if (!pendingReplies.has(threadKey)) {
     pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts, userId: message.user, isMention: false });
@@ -936,7 +1058,7 @@ app.message(async ({ message, client }) => {
         history.push({ role: 'user', content: entry.messages.join('\n') });
       }
 
-      const reply = await getAIReply(history.slice(-10), entry.userId);
+      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey));
       if (reply) {
         botStats.aiReplies++;
         history.push({ role: 'assistant', content: reply });
@@ -944,6 +1066,9 @@ app.message(async ({ message, client }) => {
         if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
         extractMemory(entry.userId, entry.messages).catch(() => {});
+        const tmAfter = threadMemory.get(threadKey);
+        if (tmAfter) tmAfter.lastBotReply = reply;
+        maybeUpdateThreadSummary(threadKey).catch(() => {});
       }
     } catch (e) {
       console.error('bot reply error:', e.message);
