@@ -861,7 +861,8 @@ app.message(async ({ message, client }) => {
       }
     } catch (e) {
       console.error('DM AI error:', e.message);
-      await client.chat.postMessage({ channel: message.channel, text: shortFallbacks[Math.floor(Math.random() * shortFallbacks.length)] });
+      const fallback = await getAIReply([{ role: 'user', content: text }], message.user);
+      if (fallback) await client.chat.postMessage({ channel: message.channel, text: fallback });
     }
     return;
   }
