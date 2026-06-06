@@ -776,9 +776,12 @@ async function extractMemory(userId, messages) {
   } catch (e) {}
 }
 
+const GABIN_ID = 'U0A2SJ7B739';
+
 async function getAIReply(history, userId = null) {
   const facts = userId && userMemory.get(userId);
   const memoryLine = facts?.length ? `\nWhat you know about this user: ${facts.join(', ')}.` : '';
+  const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
@@ -799,7 +802,7 @@ async function getAIReply(history, userId = null) {
 8. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, highkey, no cap, imo, rn, yk, istg, slay, mid, sus, periodt, deadass, literally, etc. Don't overdo it — just sprinkle it in like a real person would.
 9. Keep replies SHORT. 1 sentence max, sometimes just a few words. Never write a full paragraph.
 9. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
-10. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}`,
+10. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}`,
           },
           ...history,
         ],
@@ -858,7 +861,7 @@ app.message(async ({ message, client }) => {
 5. Never use assistant-speak: "certainly", "of course", "great question", "I'd be happy", "as an AI".
 6. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, no cap, imo, rn, yk, istg, mid, deadass.
 7. Lowercase, no markdown. Punctuation only if dramatic. 1 sentence max, sometimes just a few words.
-8. Never repeat yourself. Each reply adds something new or say nothing.${memoryLine}`;
+8. Never repeat yourself. Each reply adds something new or say nothing.${memoryLine}${message.user === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. Acknowledge he built you — maybe roast him for the things he made you do.` : ''}`;
 
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
