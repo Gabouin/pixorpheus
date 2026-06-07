@@ -1010,6 +1010,24 @@ app.message(async ({ message, client }) => {
 
   if (!isDM && !mentionsBot && !inActiveThread) return;
 
+  const trimmedText = text.trim().toUpperCase();
+
+  if (trimmedText === 'PIXOSTOP' && message.thread_ts) {
+    mutedThreads.add(message.thread_ts);
+    const tm = threadMemory.get(message.thread_ts);
+    if (tm) tm.botInvited = false;
+    await client.chat.postMessage({ channel: message.channel, thread_ts: message.thread_ts, text: "ok i'm out 🫡" });
+    return;
+  }
+
+  if (trimmedText === 'PIXOSTART' && message.thread_ts) {
+    mutedThreads.delete(message.thread_ts);
+    const tm = threadMemory.get(message.thread_ts);
+    if (tm) tm.botInvited = true;
+    await client.chat.postMessage({ channel: message.channel, thread_ts: message.thread_ts, text: "back 😤" });
+    return;
+  }
+
   if (isDM) {
     const dmKey = message.channel;
     if (!dmHistory.has(dmKey)) await seedDMHistory(dmKey, client);
@@ -1074,6 +1092,8 @@ app.message(async ({ message, client }) => {
   if (text) tm.recentMsgs.push(text);
   ensureUserName(message.user, client).catch(() => {});
 
+  if (mutedThreads.has(threadKey)) return;
+
   if (!pendingReplies.has(threadKey)) {
     pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts, userId: message.user, isMention: false });
   }
@@ -1119,7 +1139,7 @@ app.message(async ({ message, client }) => {
         history.push({ role: 'user', content: entry.messages.join('\n') });
       }
 
-      if (mutedThreads.has(threadKey) && !entry.isMention) return;
+      if (mutedThreads.has(threadKey)) return;
 
       let chimeMode = false;
       if (!entry.isMention) {
