@@ -430,7 +430,7 @@ app.command("/pixl-joke", async ({ command, ack, respond }) => {
   await ack();
   const promo = PIXL_CHANNELS.includes(command.channel_id) ? '' : PIXL_PROMO;
   try {
-    const res = await axios.get("https://v2.jokeapi.dev/joke/Any?blacklistFlags=racist,sexist&type=twopart,single");
+    const res = await axios.get("https://v2.jokeapi.dev/joke/Any?blacklistFlags=racist,sexist&type=twopart,single", { timeout: 5000 });
     const joke = res.data;
     const text = joke.type === 'twopart' ? `${joke.setup}\n\n${joke.delivery}` : joke.joke;
     await respond({ text: `${text}${promo}` });
@@ -854,13 +854,27 @@ async function ensureUserName(userId, client) {
   } catch (e) {}
 }
 
+function getDisplayName(userId) {
+  const facts = userMemory.get(userId) || [];
+  const nameFact = facts.find(f => f.startsWith('name is '));
+  return nameFact ? nameFact.replace('name is ', '') : null;
+}
+
+function resolveUserMentions(text) {
+  return text.replace(/<@([A-Z0-9]+)>/g, (match, uid) => {
+    if (uid === botUserId) return '@pixorpheus';
+    const name = getDisplayName(uid);
+    return name ? `@${name}` : match;
+  });
+}
+
 async function seedThreadHistory(threadKey, channel, threadTs, client) {
   if (threadHistory.has(threadKey) && threadHistory.get(threadKey).length > 0) return;
   try {
     const data = await client.conversations.replies({ channel, ts: threadTs, limit: 40 });
     const seeded = (data.messages || [])
       .filter(m => m.text)
-      .map(m => ({ role: m.bot_id ? 'assistant' : 'user', content: m.text }));
+      .map(m => ({ role: m.bot_id ? 'assistant' : 'user', content: resolveUserMentions(m.text) }));
     if (seeded.length) threadHistory.set(threadKey, seeded);
   } catch (e) {}
 }
@@ -885,20 +899,20 @@ async function extractMemory(userId, messages) {
       {
         model: 'anthropic/claude-haiku-4.5',
         messages: [
-          { role: 'system', content: 'Extract up to 3 short memorable facts about the user from these messages (e.g. "likes cats", "works in design", "hates mondays", "studying CS", "lives in Paris"). Output each fact on its own line, max 8 words each. Output nothing if there is nothing worth remembering. No bullet points, no numbers.' },
+          { role: 'system', content: 'Extract up to 5 memorable facts about this person from their messages. Focus on: name, location, job/studies, interests, hobbies, strong opinions, personality, recurring topics. Short phrases only, max 8 words each, one per line. Only save things you\'d actually remember about someone. Output nothing if nothing worth saving. No bullets, no numbers.' },
           { role: 'user', content: combined },
         ],
-        max_tokens: 60,
+        max_tokens: 100,
       },
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
     const raw = res.data.choices?.[0]?.message?.content?.trim();
     if (!raw) return;
-    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 60);
+    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 80);
     if (!newFacts.length) return;
     const existing = userMemory.get(userId) || [];
     const merged = [...existing, ...newFacts];
-    userMemory.set(userId, merged.slice(-12));
+    userMemory.set(userId, merged.slice(-30));
     saveMemory();
   } catch (e) {}
 }
@@ -906,7 +920,8 @@ async function extractMemory(userId, messages) {
 const GABIN_ID = 'U0A2SJ7B739';
 
 async function shouldChimeIn(messages) {
-  const combined = messages.join('\n');
+  const combined = messages.map(resolveUserMentions).join('\n');
+  const botIdHint = botUserId ? `The bot's Slack mention is @pixorpheus (ID <@${botUserId}>). ` : '';
   try {
     const res = await axios.post(
       'https://ai.hackclub.com/proxy/v1/chat/completions',
@@ -915,10 +930,10 @@ async function shouldChimeIn(messages) {
         messages: [
           {
             role: 'system',
-            content: `You are deciding whether Pixorpheus (a sarcastic Slack bot) should jump into this conversation. Reply with exactly one word:
-DIRECT — they are clearly talking to the bot, asking it something, or expecting a response from it
-CHIME — they're talking among themselves but there's a genuinely funny/obvious opportunity for a 1-line sarcastic interjection
-SKIP — they're just chatting, the bot would be annoying or irrelevant here`,
+            content: `${botIdHint}You are deciding whether Pixorpheus (a sarcastic Slack bot) should jump into this conversation. Reply with exactly one word:
+DIRECT — they are clearly talking to the bot, asking it something, or expecting a response from it (look for @pixorpheus, "pixorpheus", or questions clearly aimed at it)
+CHIME — they're talking among themselves but there's a genuinely funny/obvious opening for a 1-line sarcastic interjection
+SKIP — they're just chatting between themselves, bot would be unwanted here`,
           },
           { role: 'user', content: combined },
         ],
@@ -966,8 +981,8 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 5. If someone says something dumb, point it out in the most chaotic way possible.
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
-8. Use gen z slang naturally: wdym, idk, ig, ngl, fr, lowkey, highkey, no cap, imo, rn, yk, istg, slay, mid, sus, periodt, deadass, literally, etc. Don't overdo it — just sprinkle it in like a real person would.
-9. Length rule: default to SHORT — 1 sentence or a few words. But if the question genuinely needs a longer answer (explanation, steps, code, list of options...), give a complete answer — never cut it off mid-thought. The goal is "as short as possible, as long as necessary." Never pad or ramble.
+8. Use gen Z slang naturally — the real kind: fr, ngl, lowkey, idk, wdym, rn, yk, deadass, istg, lmao, bruh, tbh, imo, sus, mid, based, L, W, ratio, cope, it's giving. AVOID gen alpha/TikTok cringe: slay, periodt, no cap, rizz, bussin, sigma, skibidi. Just sprinkle it, don't overdo it.
+9. Length: SHORT by default. 1 sentence, sometimes just a few words. Only go longer if it's genuinely needed (steps, explanation, code). Never pad. Never ramble.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.${memoryLine}${creatorLine}${programLine}${threadLine}${chimeLine}`,
           },
@@ -1092,7 +1107,12 @@ app.message(async ({ message, client }) => {
   if (text) tm.recentMsgs.push(text);
   ensureUserName(message.user, client).catch(() => {});
 
-  if (mutedThreads.has(threadKey)) return;
+  if (mutedThreads.has(threadKey)) {
+    if (mentionsBot) {
+      await client.chat.postMessage({ channel: message.channel, thread_ts: message.thread_ts, text: "i'm on mute rn — type PIXOSTART to let me back in" });
+    }
+    return;
+  }
 
   if (!pendingReplies.has(threadKey)) {
     pendingReplies.set(threadKey, { messages: [], channel: message.channel, threadTs: message.thread_ts, userId: message.user, isMention: false });
@@ -1136,7 +1156,7 @@ app.message(async ({ message, client }) => {
           history.push({ role: 'user', content: entry.messages.join('\n') });
         }
       } else {
-        history.push({ role: 'user', content: entry.messages.join('\n') });
+        history.push({ role: 'user', content: resolveUserMentions(entry.messages.join('\n')) });
       }
 
       if (mutedThreads.has(threadKey)) return;
@@ -1176,12 +1196,12 @@ app.action('toggle_thread_mute', async ({ ack, body, client }) => {
     mutedThreads.delete(threadKey);
     const tm = threadMemory.get(threadKey);
     if (tm) tm.botInvited = true;
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "back on the mic 😤" });
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "back on the mic" });
   } else {
     mutedThreads.add(threadKey);
     const tm = threadMemory.get(threadKey);
     if (tm) tm.botInvited = false;
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "ok i'll zip it 🫡 — click 🤫 on any of my messages to let me back" });
+    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "ok i'll zip it, write PIXOSTART if you wanna hear me again" });
   }
 });
 
