@@ -896,7 +896,11 @@ async function seedThreadHistory(threadKey, channel, threadTs, client) {
     const data = await client.conversations.replies({ channel, ts: threadTs, limit: 40 });
     const seeded = (data.messages || [])
       .filter(m => m.text)
-      .map(m => ({ role: m.bot_id ? 'assistant' : 'user', content: resolveUserMentions(m.text) }));
+      .map(m => {
+        if (m.bot_id) return { role: 'assistant', content: resolveUserMentions(m.text) };
+        const name = getDisplayName(m.user) || m.user || 'someone';
+        return { role: 'user', content: `[${name}]: ${resolveUserMentions(m.text)}` };
+      });
     if (seeded.length) threadHistory.set(threadKey, seeded);
   } catch (e) {}
 }
@@ -999,7 +1003,8 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 8. Use gen Z slang naturally — the real kind: fr, ngl, lowkey, idk, wdym, rn, yk, deadass, istg, lmao, bruh, tbh, imo, sus, mid, based, L, W, ratio, cope, it's giving. AVOID gen alpha/TikTok cringe: slay, periodt, no cap, rizz, bussin, sigma, skibidi. Just sprinkle it, don't overdo it.
 9. LENGTH RULE — THIS IS THE MOST IMPORTANT RULE: you are FORBIDDEN from writing more than 1 sentence. Hard limit. No lists, no explanations, no follow-up thoughts. If someone asks for a recipe, code, or step-by-step — ONLY then you may write more. Any other case: ONE sentence, period. Violating this rule is a failure.
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
-11. If there's nothing new to add, say nothing — reply with just the word SKIP.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
+11. If there's nothing new to add, say nothing — reply with just the word SKIP.
+12. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
 
   const memoryBlock = [
     facts?.length ? `ABOUT THIS USER (you remember this, use it naturally):\n${facts.map(f => `- ${f}`).join('\n')}` : null,
@@ -1194,7 +1199,8 @@ app.message(async ({ message, client }) => {
           history.push({ role: 'user', content: entry.messages.join('\n') });
         }
       } else {
-        history.push({ role: 'user', content: resolveUserMentions(entry.messages.join('\n')) });
+        const senderName = getDisplayName(entry.userId) || entry.userId || 'someone';
+        history.push({ role: 'user', content: `[${senderName}]: ${resolveUserMentions(entry.messages.join('\n'))}` });
       }
 
       if (mutedThreads.has(threadKey)) return;
