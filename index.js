@@ -1133,14 +1133,7 @@ app.message(async ({ message, client }) => {
         botStats.aiReplies++;
         history.push({ role: 'assistant', content: reply });
         const postParams = { channel: entry.channel, text: reply };
-        if (!isDM) {
-          postParams.thread_ts = threadKey;
-          const muteLabel = mutedThreads.has(threadKey) ? '💬 let me back' : '🤫 shut up';
-          postParams.blocks = [
-            { type: 'section', text: { type: 'mrkdwn', text: reply } },
-            { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: muteLabel }, action_id: 'toggle_thread_mute', value: threadKey }] },
-          ];
-        }
+        if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
         extractMemory(entry.userId, entry.messages).catch(() => {});
         const tmAfter = threadMemory.get(threadKey);
@@ -1181,3 +1174,4 @@ app.action('toggle_thread_mute', async ({ ack, body, client }) => {
   } catch (_) {}
   console.log("Pixl bot is running.");
 })();
+
