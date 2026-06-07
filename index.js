@@ -994,7 +994,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
 8. Use gen Z slang naturally — the real kind: fr, ngl, lowkey, idk, wdym, rn, yk, deadass, istg, lmao, bruh, tbh, imo, sus, mid, based, L, W, ratio, cope, it's giving. AVOID gen alpha/TikTok cringe: slay, periodt, no cap, rizz, bussin, sigma, skibidi. Just sprinkle it, don't overdo it.
-9. Length: 1-2 sentences by default, sometimes just a few words. ONLY write more if the person genuinely needs it — a recipe, steps, code, a real explanation. In that case write it fully, never cut off mid-thought. If it's just chat, stay short.
+9. Length: default is a few words. 1 short sentence MAX for normal chat. No exceptions. The ONLY time you write more is if someone literally asks for a recipe, steps, code, or a real explanation — then write it fully. Everything else: brutally short.
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
 
@@ -1133,7 +1133,7 @@ app.message(async ({ message, client }) => {
 
   activeThreads.set(threadKey, Date.now());
 
-  // Thread memory: init on first message, track content + invite status
+
   if (!threadMemory.has(threadKey)) {
     threadMemory.set(threadKey, { summary: '', lastBotReply: '', botInvited: false, recentMsgs: [] });
   }
