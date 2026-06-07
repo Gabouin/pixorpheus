@@ -615,8 +615,7 @@ app.command("/pixl-remember", async ({ command, ack, respond, client }) => {
   }
   const fact = command.text?.trim();
   if (!fact) { await respond({ text: "Usage: `/pixl-remember [fact about this server]`" }); return; }
-  programMemory.push(fact);
-  saveProgramMemory();
+  await addProgramFact(fact);
   await respond({ text: `got it, i'll remember: _${fact}_` });
 });
 
@@ -634,8 +633,8 @@ app.command("/pixl-forget", async ({ command, ack, respond, client }) => {
     await respond({ text: `Usage: \`/pixl-forget [number]\`\n${programMemory.map((f, i) => `${i+1}. ${f}`).join('\n')}` });
     return;
   }
-  const removed = programMemory.splice(idx, 1)[0];
-  saveProgramMemory();
+  const removed = programMemory[idx];
+  await removeProgramFact(idx);
   await respond({ text: `forgot: _${removed}_` });
 });
 
@@ -784,35 +783,59 @@ const dmHistory = new Map();
 
 const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
-const MEMORY_FILE = path.join(__dirname, 'user_memory.json');
 const userMemory = new Map();
-
-function loadMemory() {
-  try {
-    const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
-    for (const [k, v] of Object.entries(data)) userMemory.set(k, v);
-  } catch (e) {}
-}
-
-function saveMemory() {
-  try {
-    fs.writeFileSync(MEMORY_FILE, JSON.stringify(Object.fromEntries(userMemory), null, 2));
-  } catch (e) {}
-}
-
-loadMemory();
-
-// ===== Program memory (long-term FAQ / server knowledge) =====
-const PROGRAM_MEMORY_FILE = path.join(__dirname, 'program_memory.json');
 let programMemory = [];
 
-function loadProgramMemory() {
-  try { programMemory = JSON.parse(fs.readFileSync(PROGRAM_MEMORY_FILE, 'utf8')); } catch (e) { programMemory = []; }
+async function loadMemory() {
+  try {
+    const result = await db.query('SELECT slack_user_id, facts FROM user_memory');
+    for (const row of result.rows) userMemory.set(row.slack_user_id, row.facts);
+  } catch (e) {}
 }
-function saveProgramMemory() {
-  try { fs.writeFileSync(PROGRAM_MEMORY_FILE, JSON.stringify(programMemory, null, 2)); } catch (e) {}
+
+async function saveUserMemory(userId, facts) {
+  userMemory.set(userId, facts);
+  try {
+    await db.query(
+      `INSERT INTO user_memory (slack_user_id, facts) VALUES ($1, $2)
+       ON CONFLICT (slack_user_id) DO UPDATE SET facts = $2`,
+      [userId, JSON.stringify(facts)]
+    );
+  } catch (e) { console.error('saveUserMemory error:', e.message); }
 }
-loadProgramMemory();
+
+async function loadProgramMemory() {
+  try {
+    const result = await db.query('SELECT fact FROM program_memory ORDER BY id');
+    programMemory = result.rows.map(r => r.fact);
+  } catch (e) { programMemory = []; }
+}
+
+async function addProgramFact(fact) {
+  await db.query('INSERT INTO program_memory (fact) VALUES ($1)', [fact]);
+  programMemory.push(fact);
+}
+
+async function removeProgramFact(idx) {
+  const fact = programMemory[idx];
+  await db.query('DELETE FROM program_memory WHERE fact = $1', [fact]);
+  programMemory.splice(idx, 1);
+}
+
+async function initMemoryTables() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_memory (
+      slack_user_id TEXT PRIMARY KEY,
+      facts JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS program_memory (
+      id SERIAL PRIMARY KEY,
+      fact TEXT NOT NULL
+    )
+  `);
+}
 
 // ===== Thread memory (per-thread context for the AI) =====
 // threadKey -> { summary, lastBotReply, botInvited, recentMsgs }
@@ -849,8 +872,7 @@ async function ensureUserName(userId, client) {
     const name = info.user?.profile?.display_name || info.user?.real_name;
     if (!name) return;
     const updated = [`name is ${name}`, ...existing];
-    userMemory.set(userId, updated.slice(-12));
-    saveMemory();
+    await saveUserMemory(userId, updated.slice(-30));
   } catch (e) {}
 }
 
@@ -912,8 +934,7 @@ async function extractMemory(userId, messages) {
     if (!newFacts.length) return;
     const existing = userMemory.get(userId) || [];
     const merged = [...existing, ...newFacts];
-    userMemory.set(userId, merged.slice(-30));
-    saveMemory();
+    await saveUserMemory(userId, merged.slice(-30));
   } catch (e) {}
 }
 
@@ -1186,25 +1207,6 @@ app.message(async ({ message, client }) => {
   }, delay);
 });
 
-app.action('toggle_thread_mute', async ({ ack, body, client }) => {
-  await ack();
-  const threadKey = body.actions[0].value;
-  const channelId = body.channel.id;
-  const userId = body.user.id;
-
-  if (mutedThreads.has(threadKey)) {
-    mutedThreads.delete(threadKey);
-    const tm = threadMemory.get(threadKey);
-    if (tm) tm.botInvited = true;
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "back on the mic" });
-  } else {
-    mutedThreads.add(threadKey);
-    const tm = threadMemory.get(threadKey);
-    if (tm) tm.botInvited = false;
-    await client.chat.postEphemeral({ channel: channelId, thread_ts: threadKey, user: userId, text: "ok i'll zip it, write PIXOSTART if you wanna hear me again" });
-  }
-});
-
 (async () => {
   await app.start(process.env.PORT || 3000);
   try {
@@ -1212,6 +1214,9 @@ app.action('toggle_thread_mute', async ({ ack, body, client }) => {
     botUserId = auth.user_id;
     botAppId = auth.bot_id;
   } catch (_) {}
+  await initMemoryTables();
+  await loadMemory();
+  await loadProgramMemory();
   console.log("Pixl bot is running.");
 })();
 
