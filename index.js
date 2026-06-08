@@ -1253,8 +1253,13 @@ app.message(async ({ message, client }) => {
 
       let searchResults = null;
       if (!chimeMode) {
-        const query = await extractSearchQuery(entry.messages);
-        if (query) searchResults = await braveSearch(query);
+        const combined = entry.messages.join(' ').toLowerCase();
+        if (/\b(heure|time|quelle heure|what time|clock)\b/.test(combined)) {
+          searchResults = `Current time: ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC`;
+        } else {
+          const query = await extractSearchQuery(entry.messages);
+          if (query) searchResults = await braveSearch(query);
+        }
       }
       const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
       if (reply) {
