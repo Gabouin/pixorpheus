@@ -1042,10 +1042,18 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
+14. CHANNELS YOU KNOW: C0B8F1BBCMU is Gabin's private channel. C0B5P4N0WHH is the main Pixl program channel. C0B6STY9G5N is the Pixl program help channel.
+15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin and Ridit, currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world.
 13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
 
+  const allUserFacts = [];
+  for (const [uid, ufacts] of userMemory.entries()) {
+    if (!ufacts?.length) continue;
+    const name = getDisplayName(uid) || uid;
+    allUserFacts.push(`${name}:\n${(Array.isArray(ufacts) ? ufacts : JSON.parse(ufacts)).map(f => `- ${f}`).join('\n')}`);
+  }
   const memoryBlock = [
-    facts?.length ? `ABOUT THIS USER (you remember this, use it naturally):\n${facts.map(f => `- ${f}`).join('\n')}` : null,
+    allUserFacts.length ? `PEOPLE YOU KNOW (remember this naturally):\n${allUserFacts.join('\n')}` : null,
     programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
     searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
   ].filter(Boolean).join('\n\n');
@@ -1092,7 +1100,9 @@ app.message(async ({ message, client }) => {
   if (text.startsWith('##')) return;
 
   const isDM = message.channel_type === 'im';
-  const mentionsBot = text.toLowerCase().includes('pixorpheus') ||
+  const lowerText = text.toLowerCase();
+  const mentionsBot = lowerText.includes('pixorpheus') || lowerText.includes('pixo') ||
+                      lowerText.includes(' pix ') || lowerText.startsWith('pix ') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
   const threadKey = message.thread_ts || message.ts;
   const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
