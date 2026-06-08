@@ -944,6 +944,43 @@ async function extractMemory(userId, messages) {
 
 const GABIN_ID = 'U0A2SJ7B739';
 
+async function braveSearch(query) {
+  try {
+    const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+      params: { q: query, count: 5 },
+      headers: { 'X-Subscription-Token': process.env.BRAVE_SEARCH_KEY, 'Accept': 'application/json' },
+    });
+    const results = res.data.web?.results || [];
+    return results.slice(0, 4).map(r => `${r.title}: ${r.description}`).join('\n');
+  } catch (e) {
+    return null;
+  }
+}
+
+async function extractSearchQuery(messages) {
+  if (!process.env.BRAVE_SEARCH_KEY) return null;
+  const combined = messages.join('\n');
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: 'If this message needs up-to-date info from the web (current events, news, prices, recent releases, live data, things that change over time), output ONLY the ideal search query in English. If no web search is needed, output SKIP.' },
+          { role: 'user', content: combined },
+        ],
+        max_tokens: 20,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const out = res.data.choices?.[0]?.message?.content?.trim();
+    if (!out || out.toUpperCase().startsWith('SKIP')) return null;
+    return out;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function shouldChimeIn(messages) {
   const combined = messages.map(resolveUserMentions).join('\n');
   const botIdHint = botUserId ? `The bot's Slack mention is @pixorpheus (ID <@${botUserId}>). ` : '';
@@ -978,7 +1015,7 @@ When in doubt between DIRECT and CHIME, pick DIRECT. When in doubt between CHIME
   }
 }
 
-async function getAIReply(history, userId = null, threadCtx = null, chimeMode = false) {
+async function getAIReply(history, userId = null, threadCtx = null, chimeMode = false, searchResults = null) {
   const facts = userId && userMemory.get(userId);
   const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
   let threadLine = '';
@@ -996,7 +1033,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 1b. Your one and only creator is Gabin. His Slack ID is <@U0A2SJ7B739>. When anyone asks who made you or who your creator is, always mention <@U0A2SJ7B739> by name. No one else built you.
 2. You are sarcastic, impatient, blunt, and a little mischievous. You tease people, make unexpected jokes, and occasionally say something surprisingly unhinged but harmless. Sometimes — not always — you let a girly/gay side slip through: a dramatic gasp, a "bestie", "girl", "oh honey", "the audacity", calling something "iconic" or "a look". Keep it sporadic and natural, never forced.
 3. You are cheeky and playful — like the class clown who's also weirdly smart. You roast people lightly but never mean it seriously.
-4. If someone asks a real question (math, facts, recipes, conversions...), answer correctly but keep the attitude and maybe add a silly comment.
+4. If someone asks a real question (math, facts, recipes, conversions...), answer correctly but keep the attitude and maybe add a silly comment. If you genuinely don't know the answer, SAY SO — "idk ngl" / "no clue fr" / "not gonna pretend i know that". NEVER give a vague non-answer like "lol ok" or dodge the question — that's worse than admitting ignorance.
 5. If someone says something dumb, point it out in the most chaotic way possible.
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
@@ -1010,6 +1047,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
   const memoryBlock = [
     facts?.length ? `ABOUT THIS USER (you remember this, use it naturally):\n${facts.map(f => `- ${f}`).join('\n')}` : null,
     programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
+    searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
   ].filter(Boolean).join('\n\n');
 
   const messagesWithMemory = memoryBlock
@@ -1213,7 +1251,12 @@ app.message(async ({ message, client }) => {
         if (vibe === 'chime') chimeMode = true;
       }
 
-      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode);
+      let searchResults = null;
+      if (!chimeMode) {
+        const query = await extractSearchQuery(entry.messages);
+        if (query) searchResults = await braveSearch(query);
+      }
+      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
       if (reply) {
         botStats.aiReplies++;
         history.push({ role: 'assistant', content: reply });
