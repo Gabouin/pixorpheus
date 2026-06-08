@@ -410,10 +410,17 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-weather [city]* — Get current weather
 */pixl-urban [word]* — Urban Dictionary definition
 */pixl-remind [time] [message]* — Set a reminder (e.g. /pixl-remind 10min lunch)
+*/pixl-countdown [time] [label]* — Countdown timer that posts when it hits zero
 */pixl-ping* — Check bot latency
 */pixl-help* — Show this help message
 */pixl-joke* — Get a random joke
 */pixl-coinflip* — Flip a coin
+*/pixl-fact* — Get a random surprising fact
+*/pixl-ask [question]* — Ask Pixorpheus anything publicly
+*/pixl-poll Question | Option1 | Option2* — Create a poll
+*/pixl-ship [description]* — Announce a project you shipped
+*/pixl-leaderboard* — Who does Pixorpheus know the most about
+*/pixl-mymemory* — See what Pixorpheus remembers about you
 */pixl-stats* — Bot activity stats
 */pixl-helpstats* — Ticket stats
 */pixl-addhelper [@user]* — Add a helper (support team only)
@@ -1335,13 +1342,6 @@ app.command("/pixl-mymemory", async ({ command, ack, respond }) => {
   await respond({ text: `*what i know about you:*\n${list.map((f, i) => `${i+1}. ${f}`).join('\n')}`, response_type: 'ephemeral' });
 });
 
-// /pixl-wipememory — clears your own memory
-app.command("/pixl-wipememory", async ({ command, ack, respond }) => {
-  await ack();
-  await saveUserMemory(command.user_id, []);
-  await respond({ text: "done, you're a stranger to me now 👀", response_type: 'ephemeral' });
-});
-
 
 // /pixl-countdown — countdown timer that posts updates
 app.command("/pixl-countdown", async ({ command, ack, respond, client }) => {
@@ -1359,19 +1359,6 @@ app.command("/pixl-countdown", async ({ command, ack, respond, client }) => {
   }, ms);
 });
 
-// /pixl-calc — calculator
-app.command("/pixl-calc", async ({ command, ack, client }) => {
-  await ack();
-  const expr = command.text?.trim();
-  if (!expr) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "Usage: `/pixl-calc 42 * 7 + 3`" }); return; }
-  try {
-    const safe = expr.replace(/[^0-9+\-*/.() %]/g, '');
-    if (!safe) throw new Error('invalid');
-    const result = Function(`"use strict"; return (${safe})`)();
-    if (typeof result !== 'number' || !isFinite(result)) throw new Error('invalid');
-    await client.chat.postMessage({ channel: command.channel_id, text: `🧮 \`${expr}\` = *${result}*` });
-  } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: `can't compute that` }); }
-})
 
 
 // /pixl-ship — announce a project you shipped
@@ -1415,7 +1402,7 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
       max_tokens: 80,
     }, { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } });
     const fact = res.data.choices?.[0]?.message?.content?.trim() || 'facts are hard';
-    await client.chat.postMessage({ channel: command.channel_id, text: `🤓 ${fact}` });
+    await client.chat.postMessage({ channel: command.channel_id, text: ` ${fact}` });
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed" }); }
 });
 
