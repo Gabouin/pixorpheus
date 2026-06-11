@@ -1,2 +1,2 @@
-# pixl-bot
+#pixorpheus
 pixorpheus, available on slack
