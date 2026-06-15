@@ -879,7 +879,7 @@ async function ensureUserName(userId, client) {
     const name = info.user?.profile?.display_name || info.user?.real_name;
     if (!name) return;
     const updated = [`name is ${name}`, ...existing];
-    await saveUserMemory(userId, updated.slice(-30));
+    await saveUserMemory(userId, updated.slice(-100));
   } catch (e) {}
 }
 
@@ -932,20 +932,32 @@ async function extractMemory(userId, messages) {
       {
         model: 'anthropic/claude-haiku-4.5',
         messages: [
-          { role: 'system', content: 'Extract up to 5 memorable facts about this person from their messages. Focus on: name, location, job/studies, interests, hobbies, strong opinions, personality, recurring topics. Short phrases only, max 8 words each, one per line. Only save things you\'d actually remember about someone. Output nothing if nothing worth saving. No bullets, no numbers.' },
+          { role: 'system', content: `Extract up to 10 memorable facts about this person from their messages. Be specific and precise. Capture:
+- Identity: name, age, location, nationality, pronouns
+- Life: job, studies, school, projects they work on, things they shipped
+- Personality: humor style, how they communicate, recurring jokes, energy level
+- Opinions: things they love or hate, strong takes, pet peeves
+- Interests: hobbies, games, music, tech stack, favorite things
+- Context: inside references, ongoing situations they mention, goals
+Short phrases only, max 10 words each, one per line. Only save genuinely useful things. Skip filler. Output nothing if nothing worth saving. No bullets, no numbers.` },
           { role: 'user', content: combined },
         ],
-        max_tokens: 100,
+        max_tokens: 250,
       },
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
     const raw = res.data.choices?.[0]?.message?.content?.trim();
     if (!raw) return;
-    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 80);
+    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 100);
     if (!newFacts.length) return;
     const existing = userMemory.get(userId) || [];
-    const merged = [...existing, ...newFacts];
-    await saveUserMemory(userId, merged.slice(-30));
+    const deduped = newFacts.filter(nf => {
+      const nfWords = nf.toLowerCase().split(' ').slice(0, 3).join(' ');
+      return !existing.some(ef => ef.toLowerCase().split(' ').slice(0, 3).join(' ') === nfWords);
+    });
+    if (!deduped.length) return;
+    const merged = [...existing, ...deduped];
+    await saveUserMemory(userId, merged.slice(-100));
   } catch (e) {}
 }
 
