@@ -810,7 +810,6 @@ app.event('reaction_added', async ({ event, client }) => {
     await client.chat.delete({
       channel: event.item.channel,
       ts: event.item.ts,
-      token: process.env.SLACK_USER_TOKEN,
     });
     console.log('pixl-delete: deleted', event.item.ts);
   } catch (e) { console.error('pixl-delete error:', e.message); }
