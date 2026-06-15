@@ -419,7 +419,7 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-ask [question]* — Ask Pixorpheus anything publicly
 */pixl-poll Question | Option1 | Option2* — Create a poll
 */pixl-ship [description]* — Announce a project you shipped
-*/pixl-lastship* — Show the most recently approved ship on Hackclub Ships
+*/pixl-lastship [github_username]* — Show your last ship on Hackclub Ships (or someone else's)
 */pixl-leaderboard* — Who does Pixorpheus know the most about
 */pixl-mymemory* — See what Pixorpheus remembers about you
 */pixl-stats* — Bot activity stats
@@ -792,6 +792,7 @@ const dmHistory = new Map();
 const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
 const userMemory = new Map();
+const personalityMemory = new Map();
 let programMemory = [];
 
 async function loadMemory() {
@@ -799,6 +800,24 @@ async function loadMemory() {
     const result = await db.query('SELECT slack_user_id, facts FROM user_memory');
     for (const row of result.rows) userMemory.set(row.slack_user_id, row.facts);
   } catch (e) {}
+}
+
+async function loadPersonalityMemory() {
+  try {
+    const result = await db.query('SELECT slack_user_id, traits FROM user_personality');
+    for (const row of result.rows) personalityMemory.set(row.slack_user_id, row.traits);
+  } catch (e) {}
+}
+
+async function savePersonality(userId, traits) {
+  personalityMemory.set(userId, traits);
+  try {
+    await db.query(
+      `INSERT INTO user_personality (slack_user_id, traits) VALUES ($1, $2)
+       ON CONFLICT (slack_user_id) DO UPDATE SET traits = $2`,
+      [userId, JSON.stringify(traits)]
+    );
+  } catch (e) { console.error('savePersonality error:', e.message); }
 }
 
 async function saveUserMemory(userId, facts) {
@@ -841,6 +860,12 @@ async function initMemoryTables() {
     CREATE TABLE IF NOT EXISTS program_memory (
       id SERIAL PRIMARY KEY,
       fact TEXT NOT NULL
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_personality (
+      slack_user_id TEXT PRIMARY KEY,
+      traits JSONB NOT NULL DEFAULT '[]'
     )
   `);
 }
@@ -924,6 +949,14 @@ async function seedDMHistory(channel, client) {
   } catch (e) {}
 }
 
+const GARBAGE_PATTERNS = [
+  /nothing worth/i, /output.*nothing/i, /potential consideration/i,
+  /is there something/i, /could you provide/i, /to create a/i,
+  /information about/i, /multiple messages/i, /recurring themes/i,
+  /i.d typically need/i, /\*\*/, /broader context/i, /conversation/i,
+  /memorable facts/i, /this (person|exchange|message)/i, /provide more/i,
+];
+
 async function extractMemory(userId, messages) {
   const combined = messages.join('\n');
   if (combined.length < 10) return;
@@ -936,11 +969,14 @@ async function extractMemory(userId, messages) {
           { role: 'system', content: `Extract up to 10 memorable facts about this person from their messages. Be specific and precise. Capture:
 - Identity: name, age, location, nationality, pronouns
 - Life: job, studies, school, projects they work on, things they shipped
-- Personality: humor style, how they communicate, recurring jokes, energy level
 - Opinions: things they love or hate, strong takes, pet peeves
 - Interests: hobbies, games, music, tech stack, favorite things
 - Context: inside references, ongoing situations they mention, goals
-Short phrases only, max 10 words each, one per line. Only save genuinely useful things. Skip filler. Output nothing if nothing worth saving. No bullets, no numbers.` },
+RULES:
+- Short phrases only, max 10 words each, one per line
+- Only concrete facts directly stated or strongly implied by the person
+- If there is nothing worth saving, output exactly: SKIP
+- No bullets, no numbers, no explanations, no meta-commentary, no questions` },
           { role: 'user', content: combined },
         ],
         max_tokens: 250,
@@ -948,8 +984,12 @@ Short phrases only, max 10 words each, one per line. Only save genuinely useful 
       { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
     );
     const raw = res.data.choices?.[0]?.message?.content?.trim();
-    if (!raw) return;
-    const newFacts = raw.split('\n').map(f => f.trim()).filter(f => f.length > 3 && f.length < 100);
+    if (!raw || raw.toUpperCase() === 'SKIP') return;
+    const newFacts = raw.split('\n')
+      .map(f => f.replace(/^[-•*\d.]+\s*/, '').trim())
+      .filter(f => f.length > 3 && f.length < 80)
+      .filter(f => !f.endsWith('?'))
+      .filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
     if (!newFacts.length) return;
     const existing = userMemory.get(userId) || [];
     const deduped = newFacts.filter(nf => {
@@ -959,6 +999,43 @@ Short phrases only, max 10 words each, one per line. Only save genuinely useful 
     if (!deduped.length) return;
     const merged = [...existing, ...deduped];
     await saveUserMemory(userId, merged.slice(-100));
+  } catch (e) {}
+}
+
+async function extractPersonality(userId, messages) {
+  const combined = messages.join('\n');
+  if (combined.length < 20) return;
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: `Analyze HOW this person communicates, not just what they say. Extract up to 5 stable personality traits. Focus on:
+- Communication style (blunt, verbose, passive-aggressive, enthusiastic...)
+- Humor type (sarcastic, dry, chaotic, self-deprecating...)
+- Energy level (high energy, chill, erratic, intense...)
+- Recurring behaviors (always uses "...", very short replies, overthinks, hypes people up...)
+- How they react (defensive, chill, gets excited easily, always skeptical...)
+Short phrases only, max 8 words each, one per line. Only note things that feel consistent and distinct. Output nothing if nothing stands out. No bullets, no numbers.` },
+          { role: 'user', content: combined },
+        ],
+        max_tokens: 150,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    const raw = res.data.choices?.[0]?.message?.content?.trim();
+    if (!raw) return;
+    const newTraits = raw.split('\n').map(t => t.trim()).filter(t => t.length > 3 && t.length < 80);
+    if (!newTraits.length) return;
+    const existing = personalityMemory.get(userId) || [];
+    const parsed = Array.isArray(existing) ? existing : JSON.parse(existing);
+    const deduped = newTraits.filter(nt => {
+      const ntWords = nt.toLowerCase().split(' ').slice(0, 3).join(' ');
+      return !parsed.some(et => et.toLowerCase().split(' ').slice(0, 3).join(' ') === ntWords);
+    });
+    if (!deduped.length) return;
+    await savePersonality(userId, [...parsed, ...deduped].slice(-30));
   } catch (e) {}
 }
 
@@ -1071,10 +1148,15 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
   for (const [uid, ufacts] of userMemory.entries()) {
     if (!ufacts?.length) continue;
     const name = getDisplayName(uid) || uid;
-    allUserFacts.push(`${name}:\n${(Array.isArray(ufacts) ? ufacts : JSON.parse(ufacts)).map(f => `- ${f}`).join('\n')}`);
+    const facts = (Array.isArray(ufacts) ? ufacts : JSON.parse(ufacts));
+    const traits = personalityMemory.get(uid);
+    const parsedTraits = traits ? (Array.isArray(traits) ? traits : JSON.parse(traits)) : [];
+    let entry = `${name}:\n${facts.map(f => `- ${f}`).join('\n')}`;
+    if (parsedTraits.length) entry += `\n  personality: ${parsedTraits.join(', ')}`;
+    allUserFacts.push(entry);
   }
   const memoryBlock = [
-    allUserFacts.length ? `PEOPLE YOU KNOW (remember this naturally):\n${allUserFacts.join('\n')}` : null,
+    allUserFacts.length ? `PEOPLE YOU KNOW (remember this naturally, use personality insights to adapt your tone with each person):\n${allUserFacts.join('\n')}` : null,
     programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
     searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
   ].filter(Boolean).join('\n\n');
@@ -1200,6 +1282,7 @@ app.message(async ({ message, client }) => {
         botStats.aiReplies++;
         await client.chat.postMessage({ channel: message.channel, text: reply });
         extractMemory(message.user, [text]).catch(() => {});
+        if (Math.random() < 0.2) extractPersonality(message.user, [text]).catch(() => {});
       }
     } catch (e) {
       console.error('DM AI error:', e.message);
@@ -1300,6 +1383,7 @@ app.message(async ({ message, client }) => {
         if (!isDM) postParams.thread_ts = threadKey;
         await client.chat.postMessage(postParams);
         extractMemory(entry.userId, entry.messages).catch(() => {});
+        if (Math.random() < 0.2) extractPersonality(entry.userId, entry.messages).catch(() => {});
         const tmAfter = threadMemory.get(threadKey);
         if (tmAfter) tmAfter.lastBotReply = reply;
         maybeUpdateThreadSummary(threadKey).catch(() => {});
@@ -1351,8 +1435,39 @@ app.command("/pixl-mymemory", async ({ command, ack, respond }) => {
   await ack();
   const facts = userMemory.get(command.user_id);
   const list = Array.isArray(facts) ? facts : (facts ? JSON.parse(facts) : []);
-  if (!list.length) { await respond({ text: "i don't remember anything about you yet 💀", response_type: 'ephemeral' }); return; }
-  await respond({ text: `*what i know about you:*\n${list.map((f, i) => `${i+1}. ${f}`).join('\n')}`, response_type: 'ephemeral' });
+  const traits = personalityMemory.get(command.user_id);
+  const traitList = traits ? (Array.isArray(traits) ? traits : JSON.parse(traits)) : [];
+
+  if (!list.length && !traitList.length) {
+    await respond({ text: "i don't remember anything about you yet 💀", response_type: 'ephemeral' });
+    return;
+  }
+
+  const cleanFacts = list.filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
+
+  try {
+    const input = [
+      cleanFacts.length ? `facts: ${cleanFacts.join(', ')}` : null,
+      traitList.length ? `personality: ${traitList.join(', ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    const res = await axios.post('https://ai.hackclub.com/proxy/v1/chat/completions', {
+      model: 'anthropic/claude-haiku-4.5',
+      messages: [
+        { role: 'system', content: 'You are Pixorpheus, a sarcastic Slack bot. Based on what you know about this person, write 1-2 casual sentences summarizing who they are. Lowercase, conversational, gen Z energy. No lists, no bullet points. Only mention real concrete things — skip anything vague or generic.' },
+        { role: 'user', content: input },
+      ],
+      max_tokens: 120,
+    }, { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } });
+
+    const summary = res.data.choices?.[0]?.message?.content?.trim();
+    if (summary) {
+      await respond({ text: `here's what i got on you:\n${summary}`, response_type: 'ephemeral' });
+      return;
+    }
+  } catch (e) {}
+
+  await respond({ text: `here's what i got on you:\n${cleanFacts.join('\n')}`, response_type: 'ephemeral' });
 });
 
 
@@ -1419,26 +1534,56 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed" }); }
 });
 
-// /pixl-lastship — show the most recently approved ship on Hackclub Ships
+
+// /pixl-lastship [github_username] — show the last ship of a user (or yourself)
 app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await ack();
+
+  let githubUsername = command.text?.trim().replace(/^@/, '');
+
+  if (!githubUsername) {
+    const facts = userMemory.get(command.user_id) || [];
+    const parsed = Array.isArray(facts) ? facts : JSON.parse(facts);
+    const githubFact = parsed.find(f => /github/i.test(f));
+    if (githubFact) {
+      const match = githubFact.match(/[:\s]+([A-Za-z0-9_-]+)\s*$/);
+      if (match) githubUsername = match[1];
+    }
+  }
+
+  if (!githubUsername) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "i don't know your github username — use `/pixl-lastship your_github_username`",
+    });
+    return;
+  }
+
   try {
     const res = await axios.get('https://ships.hackclub.com/api/v1/ysws_entries', { timeout: 10000 });
-    const entries = (res.data || []).filter(e => e.approved_at);
+    const entries = (res.data || []).filter(e =>
+      e.approved_at && e.github_username?.toLowerCase() === githubUsername.toLowerCase()
+    );
+
     if (!entries.length) {
-      await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "no ships found" });
+      await client.chat.postEphemeral({
+        channel: command.channel_id,
+        user: command.user_id,
+        text: `no approved ships found for *${githubUsername}* on Hackclub Ships`,
+      });
       return;
     }
+
     entries.sort((a, b) => b.approved_at - a.approved_at);
     const e = entries[0];
 
-    const lines = [`🚀 *Last ship on Hackclub Ships*${e.github_username ? ` — by *${e.github_username}*` : ''}`];
+    const lines = [`🚀 *Last ship by ${e.github_username}* (via <@${command.user_id}>)`];
     if (e.ysws) lines.push(`📦 Program: ${e.ysws}`);
     if (e.description) lines.push(`> ${e.description}`);
     if (e.code_url) lines.push(`💻 Code: ${e.code_url}`);
     if (e.demo_url) lines.push(`🌐 Demo: ${e.demo_url}`);
     if (e.hours) lines.push(`⏱️ ${e.hours}h spent`);
-    if (e.country) lines.push(`🌍 ${e.country}`);
 
     await client.chat.postMessage({ channel: command.channel_id, text: lines.join('\n') });
   } catch (err) {
@@ -1455,6 +1600,7 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   } catch (_) {}
   await initMemoryTables();
   await loadMemory();
+  await loadPersonalityMemory();
   await loadProgramMemory();
   console.log("Pixl bot is running.");
 })();
