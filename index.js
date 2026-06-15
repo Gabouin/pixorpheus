@@ -786,8 +786,9 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
-// React with 🗑️ on any Pixo message to delete it
+// React with :pixl-delete: on any Pixo message to delete it
 app.event('reaction_added', async ({ event, client }) => {
+  console.log('reaction_added:', event.reaction, 'on', event.item.type);
   if (event.reaction !== 'pixl-delete') return;
   if (event.item.type !== 'message') return;
 
@@ -795,13 +796,15 @@ app.event('reaction_added', async ({ event, client }) => {
     const result = await client.conversations.history({
       channel: event.item.channel,
       latest: event.item.ts,
+      oldest: event.item.ts,
       limit: 1,
       inclusive: true,
     });
     const msg = result.messages?.[0];
+    console.log('pixl-delete: msg found?', !!msg, 'bot_id:', msg?.bot_id, 'botAppId:', botAppId, 'user:', msg?.user, 'botUserId:', botUserId);
     if (!msg) return;
 
-    const isPixoMsg = msg.bot_id === botAppId || msg.user === botUserId;
+    const isPixoMsg = msg.bot_id === botAppId || msg.user === botUserId || !!msg.bot_id;
     if (!isPixoMsg) return;
 
     await client.chat.delete({
@@ -809,7 +812,8 @@ app.event('reaction_added', async ({ event, client }) => {
       ts: event.item.ts,
       token: process.env.SLACK_USER_TOKEN,
     });
-  } catch (_) {}
+    console.log('pixl-delete: deleted', event.item.ts);
+  } catch (e) { console.error('pixl-delete error:', e.message); }
 });
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
