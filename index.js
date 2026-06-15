@@ -1032,7 +1032,7 @@ async function extractMemory(userId, messages) {
       {
         model: 'anthropic/claude-haiku-4.5',
         messages: [
-          { role: 'system', content: `Extract up to 10 memorable facts about this person from their messages. Be specific and precise. Capture:
+          { role: 'system', content: `Extract up to 10 memorable facts about THE AUTHOR of these messages. Be specific and precise. Capture:
 - Identity: name, age, location, nationality, pronouns
 - Life: job, studies, school, projects they work on, things they shipped
 - Opinions: things they love or hate, strong takes, pet peeves
@@ -1040,8 +1040,9 @@ async function extractMemory(userId, messages) {
 - Context: inside references, ongoing situations they mention, goals
 RULES:
 - Short phrases only, max 10 words each, one per line
-- Only concrete facts directly stated or strongly implied by the person
-- If there is nothing worth saving, output exactly: SKIP
+- Only concrete facts directly stated or strongly implied BY THE AUTHOR about THEMSELVES — never save facts about other people they mention
+- If someone says "alex loves pizza", that's about alex, not the author — SKIP it
+- If there is nothing worth saving about the author, output exactly: SKIP
 - No bullets, no numbers, no explanations, no meta-commentary, no questions` },
           { role: 'user', content: combined },
         ],
