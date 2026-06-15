@@ -417,7 +417,7 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-coinflip* — Flip a coin
 */pixl-fact* — Get a random surprising fact
 */pixl-ask [question]* — Ask Pixorpheus anything publicly
-*/pixl-poll Question | Option1 | Option2* — Create a poll
+*/pixl-poll Question; Option1, Option2 [, 10min]* — Create a poll, add a timer at the end to auto-post results
 */pixl-ship [description]* — Announce a project you shipped
 */pixl-lastship [github_username]* — Show your last ship on Hackclub Ships (or someone else's)
 */pixl-leaderboard* — Who does Pixorpheus know the most about
@@ -897,6 +897,55 @@ async function initMemoryTables() {
       traits JSONB NOT NULL DEFAULT '[]'
     )
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS polls (
+      id SERIAL PRIMARY KEY,
+      channel TEXT NOT NULL,
+      message_ts TEXT NOT NULL,
+      question TEXT NOT NULL,
+      options JSONB NOT NULL,
+      closes_at BIGINT NOT NULL
+    )
+  `);
+}
+
+function schedulePollClose(channel, messageTs, question, options, pollId, delay) {
+  const emojiNames = ['one','two','three','four','five','six','seven','eight','nine'];
+  const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
+  setTimeout(async () => {
+    try {
+      const info = await app.client.reactions.get({ channel, timestamp: messageTs });
+      const reactions = info.message?.reactions || [];
+      const results = options.map((opt, i) => {
+        const r = reactions.find(r => r.name === emojiNames[i]);
+        return { opt, count: r ? r.count - 1 : 0 };
+      });
+      results.sort((a, b) => b.count - a.count);
+      const winner = results[0];
+      const lines = options.map((opt, i) => {
+        const r = reactions.find(r => r.name === emojiNames[i]);
+        const count = r ? r.count - 1 : 0;
+        return `${emojis[i]} ${opt} — *${count}* vote${count !== 1 ? 's' : ''}`;
+      });
+      await app.client.chat.postMessage({
+        channel,
+        text: `*📊 Poll closed: ${question}*\n${lines.join('\n')}\n\n🏆 *${winner.opt}* wins with ${winner.count} vote${winner.count !== 1 ? 's' : ''}!`,
+      });
+      await db.query('DELETE FROM polls WHERE id = $1', [pollId]);
+    } catch (e) { console.error('poll close error:', e.message); }
+  }, delay);
+}
+
+async function loadPendingPolls() {
+  try {
+    const result = await db.query('SELECT * FROM polls WHERE closes_at > $1', [Date.now()]);
+    for (const row of result.rows) {
+      const delay = Number(row.closes_at) - Date.now();
+      const options = Array.isArray(row.options) ? row.options : JSON.parse(row.options);
+      schedulePollClose(row.channel, row.message_ts, row.question, options, row.id, delay);
+    }
+    if (result.rows.length) console.log(`Loaded ${result.rows.length} pending poll(s).`);
+  } catch (e) { console.error('loadPendingPolls error:', e.message); }
 }
 
 // ===== Thread memory (per-thread context for the AI) =====
@@ -1389,9 +1438,12 @@ app.message(async ({ message, client }) => {
 
       let chimeMode = false;
       if (!entry.isMention) {
-        const vibe = await shouldChimeIn(entry.messages);
-        if (vibe === 'skip') return;
-        if (vibe === 'chime') chimeMode = true;
+        const tmCurrent = threadMemory.get(threadKey);
+        if (!tmCurrent?.botInvited) {
+          const vibe = await shouldChimeIn(entry.messages);
+          if (vibe === 'skip') return;
+          if (vibe === 'chime') chimeMode = true;
+        }
       }
 
       let searchResults = null;
@@ -1442,20 +1494,61 @@ app.command("/pixl-ask", async ({ command, ack, client }) => {
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed lol" }); }
 });
 
-// /pixl-poll — create a quick yes/no or multi-option poll
+// /pixl-poll — create a poll: "Question | Option1, Option2 [, 10min]"
 app.command("/pixl-poll", async ({ command, ack, client }) => {
   await ack();
   const raw = command.text?.trim();
-  if (!raw) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: 'Usage: `/pixl-poll Question | Option1 | Option2 | ...`' }); return; }
-  const parts = raw.split('|').map(s => s.trim()).filter(Boolean);
-  const question = parts[0];
-  const options = parts.slice(1);
+  if (!raw) {
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: 'Usage: `/pixl-poll Question | Option1, Option2` — add a timer at the end: `Option1, Option2, 10min`' });
+    return;
+  }
+
+  const sepIdx = raw.indexOf(';');
+  if (sepIdx === -1) {
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: 'Separate your question from options with `;`. Ex: `/pixl-poll Pizza or tacos?; Pizza, Tacos`' });
+    return;
+  }
+
+  const question = raw.slice(0, sepIdx).trim();
+  let options = raw.slice(sepIdx + 1).split(',').map(s => s.trim()).filter(Boolean);
+
+  const timeRegex = /^(\d+)(min|h|d)$/i;
+  let durationMs = null;
+  let durationLabel = null;
+  if (options.length && timeRegex.test(options[options.length - 1])) {
+    const match = options.pop().match(timeRegex);
+    const amount = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    durationMs = unit === 'min' ? amount * 60000 : unit === 'h' ? amount * 3600000 : amount * 86400000;
+    durationLabel = `${amount}${unit}`;
+  }
+
+  if (options.length < 2) {
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: 'Need at least 2 options. Ex: `/pixl-poll Pizza or tacos? | Pizza, Tacos`' });
+    return;
+  }
+
+  const emojiNames = ['one','two','three','four','five','six','seven','eight','nine'];
   const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
-  if (options.length < 2) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: 'Need at least 2 options. Format: `/pixl-poll Question | A | B`' }); return; }
   const body = options.map((o, i) => `${emojis[i]} ${o}`).join('\n');
-  const msg = await client.chat.postMessage({ channel: command.channel_id, text: `*📊 ${question}*\n${body}\n_poll by <@${command.user_id}>_` });
+  const timerNote = durationLabel ? ` — closes in ${durationLabel}` : '';
+
+  const msg = await client.chat.postMessage({
+    channel: command.channel_id,
+    text: `*📊 ${question}*\n${body}\n_poll by <@${command.user_id}>${timerNote}_`,
+  });
+
   for (let i = 0; i < Math.min(options.length, 9); i++) {
-    try { await client.reactions.add({ channel: command.channel_id, name: `${['one','two','three','four','five','six','seven','eight','nine'][i]}`, timestamp: msg.ts }); } catch (_) {}
+    try { await client.reactions.add({ channel: command.channel_id, name: emojiNames[i], timestamp: msg.ts }); } catch (_) {}
+  }
+
+  if (durationMs) {
+    const closesAt = Date.now() + durationMs;
+    const result = await db.query(
+      'INSERT INTO polls (channel, message_ts, question, options, closes_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [command.channel_id, msg.ts, question, JSON.stringify(options), closesAt]
+    );
+    schedulePollClose(command.channel_id, msg.ts, question, options, result.rows[0].id, durationMs);
   }
 });
 
@@ -1631,6 +1724,7 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await loadMemory();
   await loadPersonalityMemory();
   await loadProgramMemory();
+  await loadPendingPolls();
   console.log("Pixl bot is running.");
 })();
 
