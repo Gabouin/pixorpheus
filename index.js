@@ -788,7 +788,7 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
 
 // React with 🗑️ on any Pixo message to delete it
 app.event('reaction_added', async ({ event, client }) => {
-  if (event.reaction !== 'wastebasket') return;
+  if (event.reaction !== 'pixl-delete') return;
   if (event.item.type !== 'message') return;
 
   try {
