@@ -786,6 +786,32 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
   }
 });
 
+// React with 🗑️ on any Pixo message to delete it
+app.event('reaction_added', async ({ event, client }) => {
+  if (event.reaction !== 'wastebasket') return;
+  if (event.item.type !== 'message') return;
+
+  try {
+    const result = await client.conversations.history({
+      channel: event.item.channel,
+      latest: event.item.ts,
+      limit: 1,
+      inclusive: true,
+    });
+    const msg = result.messages?.[0];
+    if (!msg) return;
+
+    const isPixoMsg = msg.bot_id === botAppId || msg.user === botUserId;
+    if (!isPixoMsg) return;
+
+    await client.chat.delete({
+      channel: event.item.channel,
+      ts: event.item.ts,
+      token: process.env.SLACK_USER_TOKEN,
+    });
+  } catch (_) {}
+});
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const dmHistory = new Map();
 
