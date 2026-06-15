@@ -407,7 +407,6 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
     text: `*Pixl Bot Commands*\n
 */pixl [@user]* — Pixelate a user's profile picture
 */pixl-roast [@user]* — Roast someone (or yourself)
-*/pixl-weather [city]* — Get current weather
 */pixl-urban [word]* — Urban Dictionary definition
 */pixl-remind [time] [message]* — Set a reminder (e.g. /pixl-remind 10min lunch)
 */pixl-countdown [time] [label]* — Countdown timer that posts when it hits zero
@@ -421,7 +420,7 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-ship [description]* — Announce a project you shipped
 */pixl-lastship [github_username]* — Show your last ship on Hackclub Ships (or someone else's)
 */pixl-leaderboard* — Who does Pixorpheus know the most about
-*/pixl-mymemory* — See what Pixorpheus remembers about you
+*/pixl-mymemory [@user]* — See what Pixorpheus remembers about you (or someone else)
 */pixl-stats* — Bot activity stats
 */pixl-helpstats* — Ticket stats
 */pixl-addhelper [@user]* — Add a helper (support team only)
@@ -481,17 +480,6 @@ app.command("/pixl-roast", async ({ command, ack, client }) => {
   await client.chat.postMessage({ channel: command.channel_id, text: `<@${targetId}> ${roast}` });
 });
 
-app.command("/pixl-weather", async ({ command, ack, respond }) => {
-  await ack();
-  const city = command.text?.trim();
-  if (!city) { await respond({ text: "Usage: `/pixl-weather Paris`" }); return; }
-  try {
-    const res = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=3`, { timeout: 5000 });
-    await respond({ text: res.data });
-  } catch (e) {
-    await respond({ text: `Couldn't fetch weather for "${city}".` });
-  }
-});
 
 app.command("/pixl-urban", async ({ command, ack, respond }) => {
   await ack();
@@ -1234,7 +1222,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
     allUserFacts.push(entry);
   }
   const memoryBlock = [
-    allUserFacts.length ? `PEOPLE YOU KNOW (remember this naturally, use personality insights to adapt your tone with each person):\n${allUserFacts.join('\n')}` : null,
+    allUserFacts.length ? `PEOPLE YOU KNOW (use personality insights to adapt your tone with each person; if someone asks "what do you know about X" or "tell me about X", look them up here and share naturally — don't pretend you don't know):\n${allUserFacts.join('\n')}` : null,
     programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
     searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
   ].filter(Boolean).join('\n\n');
@@ -1552,20 +1540,25 @@ app.command("/pixl-poll", async ({ command, ack, client }) => {
   }
 });
 
-// /pixl-mymemory — shows what pixorpheus remembers about you
-app.command("/pixl-mymemory", async ({ command, ack, respond }) => {
+// /pixl-mymemory [@user] — shows what pixorpheus remembers about you or someone else
+app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
   await ack();
-  const facts = userMemory.get(command.user_id);
-  const list = Array.isArray(facts) ? facts : (facts ? JSON.parse(facts) : []);
-  const traits = personalityMemory.get(command.user_id);
-  const traitList = traits ? (Array.isArray(traits) ? traits : JSON.parse(traits)) : [];
+  const mentionMatch = command.text?.trim().match(/^<@([A-Z0-9]+)(?:\|[^>]+)?>/);
+  const targetId = mentionMatch ? mentionMatch[1] : command.user_id;
+  const isSelf = targetId === command.user_id;
 
-  if (!list.length && !traitList.length) {
-    await respond({ text: "i don't remember anything about you yet 💀", response_type: 'ephemeral' });
+  const rawFacts = userMemory.get(targetId);
+  const list = Array.isArray(rawFacts) ? rawFacts : (rawFacts ? JSON.parse(rawFacts) : []);
+  const rawTraits = personalityMemory.get(targetId);
+  const traitList = Array.isArray(rawTraits) ? rawTraits : (rawTraits ? JSON.parse(rawTraits) : []);
+  const cleanFacts = list.filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
+
+  const displayName = getDisplayName(targetId) || (isSelf ? 'you' : `<@${targetId}>`);
+
+  if (!cleanFacts.length && !traitList.length) {
+    await respond({ text: `i don't remember anything about ${isSelf ? 'you' : displayName} yet 💀`, response_type: 'ephemeral' });
     return;
   }
-
-  const cleanFacts = list.filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
 
   try {
     const input = [
@@ -1576,7 +1569,7 @@ app.command("/pixl-mymemory", async ({ command, ack, respond }) => {
     const res = await axios.post('https://ai.hackclub.com/proxy/v1/chat/completions', {
       model: 'anthropic/claude-haiku-4.5',
       messages: [
-        { role: 'system', content: 'You are Pixorpheus, a sarcastic Slack bot. Based on what you know about this person, write 1-2 casual sentences summarizing who they are. Lowercase, conversational, gen Z energy. No lists, no bullet points. Only mention real concrete things — skip anything vague or generic.' },
+        { role: 'system', content: `You are Pixorpheus, a sarcastic Slack bot. Based on what you know about ${isSelf ? 'this person' : displayName}, write 1-2 casual sentences summarizing who they are. Lowercase, conversational, gen Z energy. No lists, no bullet points. Only mention real concrete things — skip anything vague or generic.` },
         { role: 'user', content: input },
       ],
       max_tokens: 120,
@@ -1584,12 +1577,20 @@ app.command("/pixl-mymemory", async ({ command, ack, respond }) => {
 
     const summary = res.data.choices?.[0]?.message?.content?.trim();
     if (summary) {
-      await respond({ text: `here's what i got on you:\n${summary}`, response_type: 'ephemeral' });
+      if (isSelf) {
+        await respond({ text: `here's what i got on you:\n${summary}`, response_type: 'ephemeral' });
+      } else {
+        await client.chat.postMessage({ channel: command.channel_id, text: `here's what i know about ${displayName}:\n${summary}` });
+      }
       return;
     }
   } catch (e) {}
 
-  await respond({ text: `here's what i got on you:\n${cleanFacts.join('\n')}`, response_type: 'ephemeral' });
+  if (isSelf) {
+    await respond({ text: `here's what i got on you:\n${cleanFacts.join('\n')}`, response_type: 'ephemeral' });
+  } else {
+    await client.chat.postMessage({ channel: command.channel_id, text: `here's what i know about ${displayName}:\n${cleanFacts.map(f => `• ${f}`).join('\n')}` });
+  }
 });
 
 
