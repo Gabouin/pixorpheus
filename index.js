@@ -419,6 +419,7 @@ app.command("/pixl-help", async ({ command, ack, respond }) => {
 */pixl-ask [question]* — Ask Pixorpheus anything publicly
 */pixl-poll Question | Option1 | Option2* — Create a poll
 */pixl-ship [description]* — Announce a project you shipped
+*/pixl-lastship* — Show the most recently approved ship on Hackclub Ships
 */pixl-leaderboard* — Who does Pixorpheus know the most about
 */pixl-mymemory* — See what Pixorpheus remembers about you
 */pixl-stats* — Bot activity stats
@@ -1416,6 +1417,33 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
     const fact = res.data.choices?.[0]?.message?.content?.trim() || 'facts are hard';
     await client.chat.postMessage({ channel: command.channel_id, text: ` ${fact}` });
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed" }); }
+});
+
+// /pixl-lastship — show the most recently approved ship on Hackclub Ships
+app.command("/pixl-lastship", async ({ command, ack, client }) => {
+  await ack();
+  try {
+    const res = await axios.get('https://ships.hackclub.com/api/v1/ysws_entries', { timeout: 10000 });
+    const entries = (res.data || []).filter(e => e.approved_at);
+    if (!entries.length) {
+      await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "no ships found" });
+      return;
+    }
+    entries.sort((a, b) => b.approved_at - a.approved_at);
+    const e = entries[0];
+
+    const lines = [`🚀 *Last ship on Hackclub Ships*${e.github_username ? ` — by *${e.github_username}*` : ''}`];
+    if (e.ysws) lines.push(`📦 Program: ${e.ysws}`);
+    if (e.description) lines.push(`> ${e.description}`);
+    if (e.code_url) lines.push(`💻 Code: ${e.code_url}`);
+    if (e.demo_url) lines.push(`🌐 Demo: ${e.demo_url}`);
+    if (e.hours) lines.push(`⏱️ ${e.hours}h spent`);
+    if (e.country) lines.push(`🌍 ${e.country}`);
+
+    await client.chat.postMessage({ channel: command.channel_id, text: lines.join('\n') });
+  } catch (err) {
+    await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "couldn't fetch ships rn" });
+  }
 });
 
 (async () => {
