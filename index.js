@@ -4,6 +4,20 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
+const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
+async function aiPost(body) {
+  const primaryKey = process.env.HACKCLUB_AI_KEY;
+  const backupKey = process.env.HACKCLUB_AI_KEY_BACKUP;
+  try {
+    return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${primaryKey}`, 'Content-Type': 'application/json' } });
+  } catch (e) {
+    if (backupKey && e.response?.status === 402) {
+      return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' } });
+    }
+    throw e;
+  }
+}
+
 const { App } = require("@slack/bolt");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Pool } = require("pg");
@@ -496,9 +510,7 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
       return `${i + 1}. ${def}${ex}`;
     }).join('\n');
 
-    const aiRes = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const aiRes = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           {
@@ -508,9 +520,7 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
           { role: 'user', content: `Term: "${term}"\n\n${defsText}` },
         ],
         max_tokens: 150,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
 
     const picked = aiRes.data.choices?.[0]?.message?.content?.trim();
     if (!picked || picked.toUpperCase() === 'TOO_SPICY') {
@@ -946,18 +956,14 @@ async function maybeUpdateThreadSummary(threadKey) {
   const msgs = tm.recentMsgs.join('\n');
   tm.recentMsgs = [];
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           { role: 'system', content: 'Summarize this chat in 1-2 sentences. Just the topic/gist, no intro.' },
           { role: 'user', content: msgs },
         ],
         max_tokens: 60,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const summary = res.data.choices?.[0]?.message?.content?.trim();
     if (summary) tm.summary = summary;
   } catch (e) {}
@@ -1027,9 +1033,7 @@ async function extractMemory(userId, messages) {
   const combined = messages.join('\n');
   if (combined.length < 10) return;
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           { role: 'system', content: `Extract up to 10 memorable facts about THE AUTHOR of these messages. Be specific and precise. Capture:
@@ -1047,9 +1051,7 @@ RULES:
           { role: 'user', content: combined },
         ],
         max_tokens: 250,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const raw = res.data.choices?.[0]?.message?.content?.trim();
     if (!raw || raw.toUpperCase() === 'SKIP') return;
     const newFacts = raw.split('\n')
@@ -1073,9 +1075,7 @@ async function extractPersonality(userId, messages) {
   const combined = messages.join('\n');
   if (combined.length < 20) return;
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           { role: 'system', content: `Analyze HOW this person communicates, not just what they say. Extract up to 5 stable personality traits. Focus on:
@@ -1088,9 +1088,7 @@ Short phrases only, max 8 words each, one per line. Only note things that feel c
           { role: 'user', content: combined },
         ],
         max_tokens: 150,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const raw = res.data.choices?.[0]?.message?.content?.trim();
     if (!raw) return;
     const newTraits = raw.split('\n').map(t => t.trim()).filter(t => t.length > 3 && t.length < 80);
@@ -1125,18 +1123,14 @@ async function extractSearchQuery(messages) {
   if (!process.env.BRAVE_SEARCH_KEY) return null;
   const combined = messages.join('\n');
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           { role: 'system', content: 'If this message needs up-to-date info from the web (current events, news, prices, recent releases, live data, things that change over time), output ONLY the ideal search query in English. If no web search is needed, output SKIP.' },
           { role: 'user', content: combined },
         ],
         max_tokens: 20,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const out = res.data.choices?.[0]?.message?.content?.trim();
     if (!out || out.toUpperCase().startsWith('SKIP')) return null;
     return out;
@@ -1149,9 +1143,7 @@ async function shouldChimeIn(messages) {
   const combined = messages.map(resolveUserMentions).join('\n');
   const botIdHint = botUserId ? `The bot's Slack mention is @pixorpheus (ID <@${botUserId}>). ` : '';
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           {
@@ -1167,9 +1159,7 @@ When in doubt between DIRECT and CHIME, pick DIRECT. When in doubt between CHIME
           { role: 'user', content: combined },
         ],
         max_tokens: 5,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const word = res.data.choices?.[0]?.message?.content?.trim().toUpperCase().split(/\s/)[0];
     if (word === 'DIRECT') return 'direct';
     if (word === 'CHIME') return 'chime';
@@ -1201,7 +1191,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 4. If someone asks a real question (math, facts, recipes, conversions...), answer correctly but keep the attitude and maybe add a silly comment. If you genuinely don't know the answer, SAY SO — "idk ngl" / "no clue fr" / "not gonna pretend i know that". NEVER give a vague non-answer like "lol ok" or dodge the question — that's worse than admitting ignorance.
 5. If someone says something dumb, point it out in the most chaotic way possible.
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
-7. Always write lowercase, like you're texting. No markdown, no lists. Punctuation only if dramatic.
+7. Always write lowercase, like you're texting. No markdown, no lists, no bullet points, no dashes. Never use " - " or "—" in a sentence. Punctuation only if dramatic.
 8. Use gen Z slang naturally — the real kind: fr, ngl, lowkey, idk, wdym, rn, yk, deadass, istg, lmao, bruh, tbh, imo, sus, mid, based, L, W, ratio, cope, it's giving. AVOID gen alpha/TikTok cringe: slay, periodt, no cap, rizz, bussin, sigma, skibidi. Just sprinkle it, don't overdo it.
 9. LENGTH RULE — THIS IS THE MOST IMPORTANT RULE: you are FORBIDDEN from writing more than 1 sentence. Hard limit. No lists, no explanations, no follow-up thoughts. If someone asks for a recipe, code, or step-by-step — ONLY then you may write more. Any other case: ONE sentence, period. Violating this rule is a failure.
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
@@ -1233,18 +1223,14 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
     : history;
 
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
+    const res = await aiPost({
         model: 'anthropic/claude-haiku-4.5',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messagesWithMemory,
         ],
         max_tokens: 300,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      });
     const content = res.data.choices?.[0]?.message?.content
       ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
       ?.replace(/^skip\s*\n?/i, '')
@@ -1470,14 +1456,14 @@ app.command("/pixl-ask", async ({ command, ack, client }) => {
   const question = command.text?.trim();
   if (!question) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "Usage: `/pixl-ask what is the meaning of life`" }); return; }
   try {
-    const res = await axios.post('https://ai.hackclub.com/proxy/v1/chat/completions', {
+    const res = await aiPost({
       model: 'anthropic/claude-haiku-4.5',
       messages: [
         { role: 'system', content: 'You are Pixorpheus, a sarcastic Slack bot. Answer in 1-2 sentences max, lowercase, gen Z energy.' },
         { role: 'user', content: question },
       ],
       max_tokens: 150,
-    }, { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } });
+    });
     const reply = res.data.choices?.[0]?.message?.content?.trim() || 'idk tbh';
     await client.chat.postMessage({ channel: command.channel_id, text: `<@${command.user_id}> asked: _${question}_\n> ${reply}` });
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed lol" }); }
@@ -1567,14 +1553,16 @@ app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
       traitList.length ? `personality: ${traitList.join(', ')}` : null,
     ].filter(Boolean).join('\n');
 
-    const res = await axios.post('https://ai.hackclub.com/proxy/v1/chat/completions', {
+    const res = await aiPost({
       model: 'anthropic/claude-haiku-4.5',
       messages: [
-        { role: 'system', content: `You are Pixorpheus, a sarcastic Slack bot. Based on what you know about ${isSelf ? 'this person' : displayName}, write 1-2 casual sentences summarizing who they are. Lowercase, conversational, gen Z energy. No lists, no bullet points. Only mention real concrete things — skip anything vague or generic.` },
+        { role: 'system', content: isSelf
+          ? `You are Pixorpheus, a sarcastic Slack bot. The person asking is the subject — speak DIRECTLY to them using "you". Write 1-2 casual sentences summarizing what you know about them. Lowercase, conversational, gen Z energy. No lists. Only mention real concrete things — skip anything vague.`
+          : `You are Pixorpheus, a sarcastic Slack bot. Write 1-2 casual sentences summarizing who ${displayName} is. Use their name or "they". Lowercase, conversational, gen Z energy. No lists. Only mention real concrete things — skip anything vague.` },
         { role: 'user', content: input },
       ],
       max_tokens: 120,
-    }, { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } });
+    });
 
     const summary = res.data.choices?.[0]?.message?.content?.trim();
     if (summary) {
@@ -1645,14 +1633,14 @@ app.command("/pixl-leaderboard", async ({ command, ack, client }) => {
 app.command("/pixl-fact", async ({ command, ack, client }) => {
   await ack();
   try {
-    const res = await axios.post('https://ai.hackclub.com/proxy/v1/chat/completions', {
+    const res = await aiPost({
       model: 'anthropic/claude-haiku-4.5',
       messages: [
         { role: 'system', content: 'Give one genuinely surprising or weird fact. 1 sentence, lowercase, no intro like "did you know". Just the fact.' },
         { role: 'user', content: 'give me a fact' },
       ],
       max_tokens: 80,
-    }, { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } });
+    });
     const fact = res.data.choices?.[0]?.message?.content?.trim() || 'facts are hard';
     await client.chat.postMessage({ channel: command.channel_id, text: ` ${fact}` });
   } catch (e) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "failed" }); }
