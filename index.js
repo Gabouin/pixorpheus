@@ -5,14 +5,23 @@ const path = require("path");
 require("dotenv").config();
 
 const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
+const NO_CREDITS = '__NO_CREDITS__';
 async function aiPost(body) {
   const primaryKey = process.env.HACKCLUB_AI_KEY;
   const backupKey = process.env.HACKCLUB_AI_KEY_BACKUP;
   try {
     return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${primaryKey}`, 'Content-Type': 'application/json' } });
   } catch (e) {
-    if (backupKey && e.response?.status === 402) {
-      return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' } });
+    if (e.response?.status === 402) {
+      if (backupKey) {
+        try {
+          return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' } });
+        } catch (e2) {
+          if (e2.response?.status === 402) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
+          throw e2;
+        }
+      }
+      const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
     }
     throw e;
   }
@@ -1237,6 +1246,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
       ?.trim();
     if (content) return content;
   } catch (e) {
+    if (e.code === NO_CREDITS) return NO_CREDITS;
     console.error('AI error:', e.response?.data || e.message);
   }
   return shortFallbacks[Math.floor(Math.random() * shortFallbacks.length)];
@@ -1432,6 +1442,12 @@ app.message(async ({ message, client }) => {
         }
       }
       const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
+      if (reply === NO_CREDITS) {
+        const postParams = { channel: entry.channel, text: 'sorry, no more ai credits rn 💀 someone needs to top up' };
+        if (!isDM) postParams.thread_ts = threadKey;
+        await client.chat.postMessage(postParams);
+        return;
+      }
       if (reply) {
         botStats.aiReplies++;
         history.push({ role: 'assistant', content: reply });
