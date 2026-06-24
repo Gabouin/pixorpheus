@@ -1043,7 +1043,7 @@ async function extractMemory(userId, messages) {
   if (combined.length < 10) return;
   try {
     const res = await aiPost({
-        model: 'anthropic/claude-haiku-4.5',
+        model: 'anthropic/claude-sonnet-4.5',
         messages: [
           { role: 'system', content: `Extract up to 10 memorable facts about THE AUTHOR of these messages. Be specific and precise. Capture:
 - Identity: name, age, location, nationality, pronouns
