@@ -520,7 +520,7 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
     }).join('\n');
 
     const aiRes = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           {
             role: 'system',
@@ -966,7 +966,7 @@ async function maybeUpdateThreadSummary(threadKey) {
   tm.recentMsgs = [];
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: 'Summarize this chat in 1-2 sentences. Just the topic/gist, no intro.' },
           { role: 'user', content: msgs },
@@ -1085,7 +1085,7 @@ async function extractPersonality(userId, messages) {
   if (combined.length < 20) return;
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: `Analyze HOW this person communicates, not just what they say. Extract up to 5 stable personality traits. Focus on:
 - Communication style (blunt, verbose, passive-aggressive, enthusiastic...)
@@ -1133,7 +1133,7 @@ async function extractSearchQuery(messages) {
   const combined = messages.join('\n');
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: 'If this message needs up-to-date info from the web (current events, news, prices, recent releases, live data, things that change over time), output ONLY the ideal search query in English. If no web search is needed, output SKIP.' },
           { role: 'user', content: combined },
@@ -1153,7 +1153,7 @@ async function shouldChimeIn(messages) {
   const botIdHint = botUserId ? `The bot's Slack mention is @pixorpheus (ID <@${botUserId}>). ` : '';
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           {
             role: 'system',
@@ -1233,7 +1233,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-chat-v4-5',
+        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messagesWithMemory,
@@ -1473,7 +1473,7 @@ app.command("/pixl-ask", async ({ command, ack, client }) => {
   if (!question) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "Usage: `/pixl-ask what is the meaning of life`" }); return; }
   try {
     const res = await aiPost({
-      model: 'deepseek/deepseek-chat-v4-5',
+      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: 'You are Pixorpheus, a sarcastic Slack bot. Answer in 1-2 sentences max, lowercase, gen Z energy.' },
         { role: 'user', content: question },
@@ -1570,7 +1570,7 @@ app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
     ].filter(Boolean).join('\n');
 
     const res = await aiPost({
-      model: 'deepseek/deepseek-chat-v4-5',
+      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: isSelf
           ? `You are Pixorpheus, a sarcastic Slack bot. The person asking is the subject — speak DIRECTLY to them using "you". Write 1-2 casual sentences summarizing what you know about them. Lowercase, conversational, gen Z energy. No lists. Only mention real concrete things — skip anything vague.`
@@ -1650,7 +1650,7 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
   await ack();
   try {
     const res = await aiPost({
-      model: 'deepseek/deepseek-chat-v4-5',
+      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: 'Give one genuinely surprising or weird fact. 1 sentence, lowercase, no intro like "did you know". Just the fact.' },
         { role: 'user', content: 'give me a fact' },
