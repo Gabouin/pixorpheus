@@ -1233,7 +1233,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
+        model: 'anthropic/claude-sonnet-4-5',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messagesWithMemory,
