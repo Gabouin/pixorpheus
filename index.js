@@ -836,10 +836,16 @@ const TRAINING_CHANNEL = 'C0BD7JSTQNM';
 let trainingMode = false;
 let trainingMessages = [];
 
+function parseFacts(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
+  return [];
+}
+
 async function loadMemory() {
   try {
     const result = await db.query('SELECT slack_user_id, facts FROM user_memory');
-    for (const row of result.rows) userMemory.set(row.slack_user_id, row.facts);
+    for (const row of result.rows) userMemory.set(row.slack_user_id, parseFacts(row.facts));
   } catch (e) {}
 }
 
@@ -1027,7 +1033,7 @@ async function maybeUpdateThreadSummary(threadKey) {
 }
 
 async function ensureUserName(userId, client) {
-  const existing = userMemory.get(userId) || [];
+  const existing = parseFacts(userMemory.get(userId));
   if (existing.some(f => f.startsWith('name is'))) return;
   try {
     const info = await client.users.info({ user: userId });
@@ -1039,7 +1045,7 @@ async function ensureUserName(userId, client) {
 }
 
 function getDisplayName(userId) {
-  const facts = userMemory.get(userId) || [];
+  const facts = parseFacts(userMemory.get(userId));
   const nameFact = facts.find(f => f.startsWith('name is '));
   return nameFact ? nameFact.replace('name is ', '') : null;
 }
@@ -1309,6 +1315,7 @@ const mutedThreads = new Set();
 const THREAD_TTL = 2 * 60 * 60 * 1000;
 
 app.message(async ({ message, client }) => {
+  console.log('[msg]', message.channel, message.subtype, !!message.bot_id, JSON.stringify(message.text?.slice(0, 50)));
   if (message.bot_id && message.bot_id === botAppId) return;
   if (message.subtype && message.subtype !== 'bot_message') return;
   const text = message.text || '';
