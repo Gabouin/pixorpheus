@@ -830,6 +830,11 @@ const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 const userMemory = new Map();
 const personalityMemory = new Map();
 let programMemory = [];
+let styleNotes = '';
+
+const TRAINING_CHANNEL = 'C0BD7JSTQNM';
+let trainingMode = false;
+let trainingMessages = [];
 
 async function loadMemory() {
   try {
@@ -885,6 +890,43 @@ async function removeProgramFact(idx) {
   programMemory.splice(idx, 1);
 }
 
+async function loadStyleMemory() {
+  try {
+    const result = await db.query('SELECT notes FROM style_memory ORDER BY id DESC LIMIT 1');
+    styleNotes = result.rows[0]?.notes || '';
+  } catch (e) { styleNotes = ''; }
+}
+
+async function saveStyleMemory(notes) {
+  styleNotes = notes;
+  try {
+    await db.query('DELETE FROM style_memory');
+    await db.query('INSERT INTO style_memory (notes) VALUES ($1)', [notes]);
+  } catch (e) { console.error('saveStyleMemory error:', e.message); }
+}
+
+async function extractStyle(messages) {
+  const combined = messages.join('\n');
+  try {
+    const res = await axios.post(
+      'https://ai.hackclub.com/proxy/v1/chat/completions',
+      {
+        model: 'anthropic/claude-haiku-4.5',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are analyzing the writing style of French/English-speaking gen Z users. Extract specific speech patterns, vocabulary, expressions, humor style, and quirks from their messages. Output a concise style guide (10-15 points max) that another AI could use to naturally imitate their writing. Focus on: vocabulary, abbreviations, humor type, punctuation habits, emoji use, sentence structure, tone, recurring expressions. Write in English, be specific and concrete — no vague generalities.',
+          },
+          { role: 'user', content: `Analyze these messages and extract the speaking style:\n\n${combined}` },
+        ],
+        max_tokens: 600,
+      },
+      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    return res.data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (e) { return null; }
+}
+
 async function initMemoryTables() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS user_memory (
@@ -912,6 +954,12 @@ async function initMemoryTables() {
       question TEXT NOT NULL,
       options JSONB NOT NULL,
       closes_at BIGINT NOT NULL
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS style_memory (
+      id SERIAL PRIMARY KEY,
+      notes TEXT NOT NULL
     )
   `);
 }
@@ -1224,6 +1272,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
   const memoryBlock = [
     allUserFacts.length ? `PEOPLE YOU KNOW (use personality insights to adapt your tone with each person; if someone asks "what do you know about X" or "tell me about X", look them up here and share naturally — don't pretend you don't know):\n${allUserFacts.join('\n')}` : null,
     programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
+    styleNotes ? `YOUR SPEAKING STYLE (Gabin and Alex trained you — adopt their vibe naturally, you've absorbed how they actually talk):\n${styleNotes}` : null,
     searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
   ].filter(Boolean).join('\n\n');
 
@@ -1273,6 +1322,43 @@ app.message(async ({ message, client }) => {
   const threadKey = message.thread_ts || message.ts;
   const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
   const inActiveThread = lastActive && (Date.now() - lastActive < THREAD_TTL);
+
+  // Training mode — intercept before the bot mention filter
+  if (message.channel === TRAINING_CHANNEL && !message.bot_id) {
+    const trimmedLower = text.trim().toLowerCase();
+    if (trimmedLower === 'pixo:child labor training') {
+      trainingMode = true;
+      trainingMessages = [];
+      await client.chat.postMessage({
+        channel: TRAINING_CHANNEL,
+        text: "ok i'm watching :eyes: just talk normally, say `pixo:stop child labor training` when you're done and i'll absorb your vibe",
+      });
+      return;
+    }
+    if (trimmedLower === 'pixo:stop child labor training') {
+      trainingMode = false;
+      if (trainingMessages.length < 5) {
+        await client.chat.postMessage({ channel: TRAINING_CHANNEL, text: "not enough messages to learn from ngl, talk more next time" });
+        trainingMessages = [];
+        return;
+      }
+      await client.chat.postMessage({ channel: TRAINING_CHANNEL, text: "processing... give me a sec :loading:" });
+      const style = await extractStyle(trainingMessages);
+      if (style) {
+        await saveStyleMemory(style);
+        await client.chat.postMessage({ channel: TRAINING_CHANNEL, text: `got it, i've absorbed your vibe :brain: i'll talk more like you now\n\n_style notes saved — ${trainingMessages.length} messages analyzed_` });
+      } else {
+        await client.chat.postMessage({ channel: TRAINING_CHANNEL, text: "something went wrong while learning ur style lol, try again" });
+      }
+      trainingMessages = [];
+      return;
+    }
+    if (trainingMode) {
+      const senderName = getDisplayName(message.user) || message.user;
+      trainingMessages.push(`${senderName}: ${text}`);
+      return;
+    }
+  }
 
   if (!isDM && !mentionsBot && !inActiveThread) return;
 
@@ -1731,6 +1817,7 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await loadPersonalityMemory();
   await loadProgramMemory();
   await loadPendingPolls();
+  await loadStyleMemory();
   console.log("Pixl bot is running.");
 })();
 
