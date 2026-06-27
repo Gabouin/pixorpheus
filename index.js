@@ -836,6 +836,10 @@ const TRAINING_CHANNEL = 'C0BD7JSTQNM';
 let trainingMode = false;
 let trainingMessages = [];
 
+let kawaiiMode = false;
+let kawaiiChannel = null;
+let kawaiiMessages = [];
+
 function parseFacts(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
@@ -1363,6 +1367,34 @@ app.message(async ({ message, client }) => {
     if (trainingMode) {
       const senderName = getDisplayName(message.user) || message.user;
       trainingMessages.push(`${senderName}: ${text}`);
+      return;
+    }
+  }
+
+  // Kawaii stealth mode — works in any channel, silent start
+  if (!message.bot_id) {
+    const trimmedLower = text.trim().toLowerCase();
+    if (trimmedLower === 'pixo:kawaii') {
+      kawaiiMode = true;
+      kawaiiChannel = message.channel;
+      kawaiiMessages = [];
+      return;
+    }
+    if (trimmedLower === 'pixo:notkawaii' && kawaiiMode && message.channel === kawaiiChannel) {
+      kawaiiMode = false;
+      const greetings = ['hi ! what\'s up', 'hey !!', 'oh hi', 'heyyy what\'s good', 'hi :wave:'];
+      await client.chat.postMessage({
+        channel: kawaiiChannel,
+        text: greetings[Math.floor(Math.random() * greetings.length)],
+      });
+      if (kawaiiMessages.length >= 5) extractStyle(kawaiiMessages).then(s => { if (s) saveStyleMemory(s); }).catch(() => {});
+      kawaiiMessages = [];
+      kawaiiChannel = null;
+      return;
+    }
+    if (kawaiiMode && message.channel === kawaiiChannel) {
+      const senderName = getDisplayName(message.user) || message.user;
+      kawaiiMessages.push(`${senderName}: ${text}`);
       return;
     }
   }
