@@ -823,7 +823,7 @@ app.event('reaction_added', async ({ event, client }) => {
 });
 
 const WELCOME_CHANNELS = {
-  'C0B5P4N0WHH': { name: '#pixl', prompt: 'Write a hype welcome for a new member joining #pixl, the main Pixl program channel. Mention shipping projects, earning Pixels, the retro 2D world. Be excited about Pixl.' },
+  'C0B5P4N0WHH': { name: '#pixl', prompt: 'Write a hype welcome for a new member joining #pixl, the main Pixl program channel. Mention shipping sidequests, earning Pixels, the retro 2D world. Be excited about Pixl. Do not use emojis or ai things.' },
   'C0B8F1BBCMU': { name: '#gabin-n-out', prompt: 'Write a warm but sarcastic welcome for a new member joining #gabin-n-out, a chill hangout channel. Keep it casual and fun, no need to explain anything.' },
 };
 
@@ -850,9 +850,14 @@ app.event('member_joined_channel', async ({ event, client }) => {
 
     const welcomeMsg = res.data.choices?.[0]?.message?.content?.trim();
     if (welcomeMsg) {
-      await client.chat.postMessage({
+      const posted = await client.chat.postMessage({
         channel: event.channel,
         text: `<@${event.user}> ${welcomeMsg}`,
+      });
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: posted.ts,
+        text: `cc <@${GABIN_ID}>`,
       });
     }
   } catch (e) {
