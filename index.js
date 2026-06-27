@@ -822,6 +822,44 @@ app.event('reaction_added', async ({ event, client }) => {
   } catch (e) { console.error('pixl-delete error:', e.message); }
 });
 
+const WELCOME_CHANNELS = {
+  'C0B5P4N0WHH': { name: '#pixl', prompt: 'Write a hype welcome for a new member joining #pixl, the main Pixl program channel. Mention shipping projects, earning Pixels, the retro 2D world. Be excited about Pixl.' },
+  'C0B8F1BBCMU': { name: '#gabin-n-out', prompt: 'Write a warm but sarcastic welcome for a new member joining #gabin-n-out, a chill hangout channel. Keep it casual and fun, no need to explain anything.' },
+};
+
+app.event('member_joined_channel', async ({ event, client }) => {
+  const channelConfig = WELCOME_CHANNELS[event.channel];
+  if (!channelConfig) return;
+  if (event.user === botUserId) return;
+
+  try {
+    const userInfo = await client.users.info({ user: event.user });
+    const name = userInfo.user?.profile?.display_name || userInfo.user?.real_name || 'you';
+
+    const res = await aiPost({
+      model: 'anthropic/claude-haiku-4.5',
+      messages: [
+        {
+          role: 'system',
+          content: `You are Pixorpheus, a sarcastic gen Z Slack bot. ${channelConfig.prompt} 1-2 sentences max. Lowercase, no markdown, use a slack emoji or two. Never say "welcome to the community" or anything generic.`,
+        },
+        { role: 'user', content: `welcome ${name}` },
+      ],
+      max_tokens: 100,
+    });
+
+    const welcomeMsg = res.data.choices?.[0]?.message?.content?.trim();
+    if (welcomeMsg) {
+      await client.chat.postMessage({
+        channel: event.channel,
+        text: `<@${event.user}> ${welcomeMsg}`,
+      });
+    }
+  } catch (e) {
+    console.error('welcome error:', e.message);
+  }
+});
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const dmHistory = new Map();
 
@@ -1264,7 +1302,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
-14. CHANNELS YOU KNOW: C0B8F1BBCMU is Gabin's private channel. C0B5P4N0WHH is the main Pixl program channel. C0B6STY9G5N is the Pixl program help channel.
+14. CHANNELS YOU KNOW: C0B8F1BBCMU is #gabin-n-out (Gabin's private channel). C0B5P4N0WHH is the main Pixl program channel (#pixl). C0B6STY9G5N is the Pixl program help channel.
 15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin and Ridit, currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world.
 13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
 
