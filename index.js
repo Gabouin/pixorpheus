@@ -4,31 +4,20 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 const OPENROUTER_URL = 'https://openrouter.ai/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
 async function aiPost(body) {
-  const primaryKey = process.env.HACKCLUB_AI_KEY;
-  const backupKey = process.env.HACKCLUB_AI_KEY_BACKUP;
   const openrouterKey = process.env.OPENROUTER_API_KEY;
-
-  // Try HackClub primary
+  if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
+  const orBody = { ...body, model: 'deepseek-4-flash' };
   try {
-    return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${primaryKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+    return await axios.post(OPENROUTER_URL, orBody, {
+      headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
+      timeout: 20000,
+    });
   } catch (e) {
-    if (e.response?.status === 402 && backupKey) {
-      try {
-        return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
-      } catch (e2) {
-        if (e2.response?.status === 402) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
-      }
-    }
-    // HackClub down or out of credits — fall back to OpenRouter
-    if (openrouterKey) {
-      const orBody = { ...body, model: 'deepseek-4-flash' };
-      return await axios.post(OPENROUTER_URL, orBody, { headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
-    }
+    console.error('[aiPost] OpenRouter error:', e.response?.data || e.message);
     const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
   }
 }
