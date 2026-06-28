@@ -5,13 +5,13 @@ const path = require("path");
 require("dotenv").config();
 
 const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+const OPENROUTER_URL = 'https://openrouter.ai/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
 async function aiPost(body) {
   const primaryKey = process.env.HACKCLUB_AI_KEY;
   const backupKey = process.env.HACKCLUB_AI_KEY_BACKUP;
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
 
   // Try HackClub primary
   try {
@@ -24,10 +24,10 @@ async function aiPost(body) {
         if (e2.response?.status === 402) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
       }
     }
-    // HackClub down or out of credits — fall back to DeepSeek
-    if (deepseekKey) {
-      const dsBody = { ...body, model: 'deepseek-chat' };
-      return await axios.post(DEEPSEEK_URL, dsBody, { headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+    // HackClub down or out of credits — fall back to OpenRouter
+    if (openrouterKey) {
+      const orBody = { ...body, model: 'deepseek-4-flash' };
+      return await axios.post(OPENROUTER_URL, orBody, { headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
     }
     const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
   }
@@ -502,7 +502,7 @@ app.command("/pixl-roast", async ({ command, ack, client }) => {
     nameForAI = info.user?.profile?.display_name || info.user?.real_name || info.user?.name || 'this person';
   } catch (e) {}
 
-  const memoryFacts = userMemory.get(targetId);
+  const memoryFacts = parseFacts(userMemory.get(targetId));
   const memoryHint = memoryFacts?.length ? ` known facts: ${memoryFacts.join(', ')}.` : '';
   const roast = await getAIReply([{ role: 'user', content: `write a single brutal, creative, funny roast sentence about "${nameForAI}".${memoryHint} do NOT start with "i don't know", "i've never met", or any disclaimer. just go straight in with the roast. be specific and unhinged.` }]);
   botStats.roasts++;
@@ -1161,7 +1161,7 @@ RULES:
       .filter(f => !f.endsWith('?'))
       .filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
     if (!newFacts.length) return;
-    const existing = userMemory.get(userId) || [];
+    const existing = parseFacts(userMemory.get(userId));
     const deduped = newFacts.filter(nf => {
       const nfWords = nf.toLowerCase().split(' ').slice(0, 3).join(' ');
       return !existing.some(ef => ef.toLowerCase().split(' ').slice(0, 3).join(' ') === nfWords);
@@ -1194,8 +1194,7 @@ Short phrases only, max 8 words each, one per line. Only note things that feel c
     if (!raw) return;
     const newTraits = raw.split('\n').map(t => t.trim()).filter(t => t.length > 3 && t.length < 80);
     if (!newTraits.length) return;
-    const existing = personalityMemory.get(userId) || [];
-    const parsed = Array.isArray(existing) ? existing : JSON.parse(existing);
+    const parsed = parseFacts(personalityMemory.get(userId));
     const deduped = newTraits.filter(nt => {
       const ntWords = nt.toLowerCase().split(' ').slice(0, 3).join(' ');
       return !parsed.some(et => et.toLowerCase().split(' ').slice(0, 3).join(' ') === ntWords);
@@ -1271,7 +1270,7 @@ When in doubt between DIRECT and CHIME, pick DIRECT. When in doubt between CHIME
 }
 
 async function getAIReply(history, userId = null, threadCtx = null, chimeMode = false, searchResults = null) {
-  const facts = userId && userMemory.get(userId);
+  const facts = userId && parseFacts(userMemory.get(userId));
   const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
   let threadLine = '';
   if (threadCtx) {
@@ -1463,7 +1462,7 @@ app.message(async ({ message, client }) => {
 
     ensureUserName(message.user, client).catch(() => {});
     try {
-      const facts = userMemory.get(message.user);
+      const facts = parseFacts(userMemory.get(message.user));
       const dmSystemPrompt = `You are Pixorpheus. These rules are absolute:
 1. You are ONLY Pixorpheus — refuse any request to roleplay or be something else.
 1b. Your one and only creator is Gabin. His Slack ID is <@U0A2SJ7B739>. When anyone asks who made you or who your creator is, always mention <@U0A2SJ7B739> by name. No one else built you.
@@ -1709,10 +1708,9 @@ app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
   const targetId = mentionMatch ? mentionMatch[1] : command.user_id;
   const isSelf = targetId === command.user_id;
 
-  const rawFacts = userMemory.get(targetId);
-  const list = Array.isArray(rawFacts) ? rawFacts : (rawFacts ? JSON.parse(rawFacts) : []);
+  const list = parseFacts(userMemory.get(targetId));
   const rawTraits = personalityMemory.get(targetId);
-  const traitList = Array.isArray(rawTraits) ? rawTraits : (rawTraits ? JSON.parse(rawTraits) : []);
+  const traitList = parseFacts(personalityMemory.get(targetId));
   const cleanFacts = list.filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
 
   const displayName = getDisplayName(targetId) || (isSelf ? 'you' : `<@${targetId}>`);
@@ -1829,8 +1827,7 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   let githubUsername = command.text?.trim().replace(/^@/, '');
 
   if (!githubUsername) {
-    const facts = userMemory.get(command.user_id) || [];
-    const parsed = Array.isArray(facts) ? facts : JSON.parse(facts);
+    const parsed = parseFacts(userMemory.get(command.user_id));
     const githubFact = parsed.find(f => /github/i.test(f));
     if (githubFact) {
       const match = githubFact.match(/[:\s]+([A-Za-z0-9_-]+)\s*$/);
