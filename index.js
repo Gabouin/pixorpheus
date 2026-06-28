@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const OPENROUTER_URL = 'https://openrouter.ai/v1/chat/completions';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
 async function aiPost(body) {
