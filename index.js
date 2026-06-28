@@ -5,25 +5,31 @@ const path = require("path");
 require("dotenv").config();
 
 const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
+const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
+
 async function aiPost(body) {
   const primaryKey = process.env.HACKCLUB_AI_KEY;
   const backupKey = process.env.HACKCLUB_AI_KEY_BACKUP;
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+
+  // Try HackClub primary
   try {
-    return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${primaryKey}`, 'Content-Type': 'application/json' } });
+    return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${primaryKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
   } catch (e) {
-    if (e.response?.status === 402) {
-      if (backupKey) {
-        try {
-          return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' } });
-        } catch (e2) {
-          if (e2.response?.status === 402) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
-          throw e2;
-        }
+    if (e.response?.status === 402 && backupKey) {
+      try {
+        return await axios.post(HC_AI_URL, body, { headers: { Authorization: `Bearer ${backupKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+      } catch (e2) {
+        if (e2.response?.status === 402) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
       }
-      const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
     }
-    throw e;
+    // HackClub down or out of credits — fall back to DeepSeek
+    if (deepseekKey) {
+      const dsBody = { ...body, model: 'deepseek-chat' };
+      return await axios.post(DEEPSEEK_URL, dsBody, { headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+    }
+    const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
   }
 }
 
