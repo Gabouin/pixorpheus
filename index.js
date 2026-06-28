@@ -1294,9 +1294,9 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
   for (const [uid, ufacts] of userMemory.entries()) {
     if (!ufacts?.length) continue;
     const name = getDisplayName(uid) || uid;
-    const facts = (Array.isArray(ufacts) ? ufacts : JSON.parse(ufacts));
+    const facts = parseFacts(ufacts);
     const traits = personalityMemory.get(uid);
-    const parsedTraits = traits ? (Array.isArray(traits) ? traits : JSON.parse(traits)) : [];
+    const parsedTraits = parseFacts(traits);
     let entry = `${name}:\n${facts.map(f => `- ${f}`).join('\n')}`;
     if (parsedTraits.length) entry += `\n  personality: ${parsedTraits.join(', ')}`;
     allUserFacts.push(entry);
