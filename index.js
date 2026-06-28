@@ -822,44 +822,29 @@ app.event('reaction_added', async ({ event, client }) => {
   } catch (e) { console.error('pixl-delete error:', e.message); }
 });
 
-const WELCOME_CHANNELS = {
-  'C0B5P4N0WHH': { name: '#pixl', prompt: 'Write a hype welcome for a new member joining #pixl, the main Pixl program channel. Mention shipping sidequests, earning Pixels, the retro 2D world. Be excited about Pixl. Do not use emojis or ai things.' },
-  'C0B8F1BBCMU': { name: '#gabin-n-out', prompt: 'Write a warm but sarcastic welcome for a new member joining #gabin-n-out, a chill hangout channel. Keep it casual and fun, no need to explain anything.' },
-};
+const PIXL_WELCOME_MSGS = [
+  "yo welcome to #pixl !! go ship something and earn your first pixels :pixel:",
+  "welcome !! pixl is a retro 2D world where you level up by building real stuff — go crazy :yay:",
+  "heyy welcome :wave: start shipping projects and you'll earn pixels to unlock regions and funding fr",
+  "welcome to pixl !! it's basically a game where you build real things and get rewarded for it — idk it slaps",
+  "oh a new one :eyes: welcome !! go check out the sidequests and start shipping, that's literally how this works",
+];
 
 app.event('member_joined_channel', async ({ event, client }) => {
-  const channelConfig = WELCOME_CHANNELS[event.channel];
-  if (!channelConfig) return;
+  if (event.channel !== 'C0B5P4N0WHH') return;
   if (event.user === botUserId) return;
 
   try {
-    const userInfo = await client.users.info({ user: event.user });
-    const name = userInfo.user?.profile?.display_name || userInfo.user?.real_name || 'you';
-
-    const res = await aiPost({
-      model: 'anthropic/claude-haiku-4.5',
-      messages: [
-        {
-          role: 'system',
-          content: `You are Pixorpheus, a sarcastic gen Z Slack bot. ${channelConfig.prompt} 1-2 sentences max. Lowercase, no markdown, use a slack emoji or two. Never say "welcome to the community" or anything generic.`,
-        },
-        { role: 'user', content: `welcome ${name}` },
-      ],
-      max_tokens: 100,
+    const msg = PIXL_WELCOME_MSGS[Math.floor(Math.random() * PIXL_WELCOME_MSGS.length)];
+    const posted = await client.chat.postMessage({
+      channel: event.channel,
+      text: `<@${event.user}> ${msg}`,
     });
-
-    const welcomeMsg = res.data.choices?.[0]?.message?.content?.trim();
-    if (welcomeMsg) {
-      const posted = await client.chat.postMessage({
-        channel: event.channel,
-        text: `<@${event.user}> ${welcomeMsg}`,
-      });
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts: posted.ts,
-        text: `cc <@${GABIN_ID}>`,
-      });
-    }
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: posted.ts,
+      text: `cc <@${GABIN_ID}>`,
+    });
   } catch (e) {
     console.error('welcome error:', e.message);
   }
