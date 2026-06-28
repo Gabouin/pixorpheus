@@ -1319,7 +1319,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
           { role: 'system', content: systemPrompt },
           ...messagesWithMemory,
         ],
-        max_tokens: 300,
+        max_tokens: 120,
       });
     const content = res.data.choices?.[0]?.message?.content
       ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
