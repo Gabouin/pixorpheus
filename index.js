@@ -8,6 +8,21 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
 async function aiPost(body) {
+  const ZEN_KEY = process.env.OPENCODE_ZEN_KEY;
+  if (ZEN_KEY) {
+    const ZEN_URL = process.env.OPENCODE_ZEN_URL || 'https://opencode.ai/zen/v1/chat/completions';
+    const zenBody = { ...body, model: process.env.ZEN_MODEL || 'opencode/deepseek-v4-flash-free' };
+    try {
+      return await axios.post(ZEN_URL, zenBody, {
+        headers: { Authorization: `Bearer ${ZEN_KEY}`, 'Content-Type': 'application/json' },
+      });
+    } catch (e) {
+      if (e.response?.status === 402 || e.response?.status === 429) {
+        const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
+      }
+      throw e;
+    }
+  }
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
   const orBody = { ...body, model: 'moonshotai/kimi-k2.6' };
