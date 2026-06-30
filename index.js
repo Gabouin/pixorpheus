@@ -479,6 +479,17 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
   });
 });
 
+app.command("/pixl-kawaii", async ({ command, ack, client }) => {
+  await ack();
+  await client.chat.postEphemeral({
+    channel: command.channel_id,
+    user: command.user_id,
+    text: kawaiiMode
+      ? `kawaii mode is ON in <#${kawaiiChannel}> — *${kawaiiMessages.length}* messages collected so far :eyes:`
+      : 'kawaii mode is OFF — start it with `pixo:kawaii` in any channel',
+  });
+});
+
 app.command("/pixl-roast", async ({ command, ack, client }) => {
   await ack();
   const mention = command.text?.trim();
@@ -619,7 +630,7 @@ app.command("/pixl-remember", async ({ command, ack, respond, client }) => {
   await ack();
   const isAdmin = await checkIsHelper(command.user_id);
   const isInTicketChannel = await checkIsInTicketChannel(command.user_id, client);
-  if (!isAdmin && !isInTicketChannel) {
+  if (!isAdmin && !isInTicketChannel && command.user_id !== GABIN_ID) {
     await respond({ text: "Only support team members can add to my memory." });
     return;
   }
@@ -687,7 +698,12 @@ app.command("/pixl", async ({ command, ack, client }) => {
     return;
   }
 
-  const mention = command.text?.trim();
+  const args = command.text?.trim() || '';
+  // parse optional pixel size at the end: "/pixl @user 16" or "/pixl 16"
+  const sizeMatch = args.match(/\b(\d+)\s*$/);
+  const pixelSize = sizeMatch ? Math.min(64, Math.max(2, parseInt(sizeMatch[1]))) : 8;
+  const mentionPart = sizeMatch ? args.slice(0, sizeMatch.index).trim() : args;
+  const mention = mentionPart || null;
   let targetId = command.user_id;
 
   if (mention) {
@@ -730,7 +746,6 @@ app.command("/pixl", async ({ command, ack, client }) => {
     const image = await Jimp.read(avatarUrl);
     const w = image.getWidth();
     const h = image.getHeight();
-    const pixelSize = 8;
 
     image
       .resize(Math.max(1, Math.floor(w / pixelSize)), Math.max(1, Math.floor(h / pixelSize)), Jimp.RESIZE_NEAREST_NEIGHBOR)
@@ -742,7 +757,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
       channel_id: command.channel_id,
       file: buffer,
       filename: `pixl-${targetId}.png`,
-      initial_comment: `<@${targetId}> pixelated!`,
+      initial_comment: `<@${targetId}> pixelated at ${pixelSize}px blocks (${Math.round((1 - 1 / (pixelSize * pixelSize)) * 100)}% pixelated)`,
     });
 
     const fileId = uploadResult?.files?.[0]?.files?.[0]?.id;
@@ -1088,8 +1103,11 @@ function resolveUserMentions(text) {
 async function seedThreadHistory(threadKey, channel, threadTs, client) {
   if (threadHistory.has(threadKey) && threadHistory.get(threadKey).length > 0) return;
   try {
-    const data = await client.conversations.replies({ channel, ts: threadTs, limit: 40 });
-    const seeded = (data.messages || [])
+    const data = await client.conversations.replies({ channel, ts: threadTs, limit: 80 });
+    const msgs = data.messages || [];
+    // ensure names are loaded for all participants before mapping
+    await Promise.all([...new Set(msgs.map(m => m.user).filter(Boolean))].map(uid => ensureUserName(uid, client)));
+    const seeded = msgs
       .filter(m => m.text)
       .map(m => {
         if (m.bot_id) return { role: 'assistant', content: resolveUserMentions(m.text) };
@@ -1613,7 +1631,7 @@ app.message(async ({ message, client }) => {
           if (query) searchResults = await braveSearch(query);
         }
       }
-      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
+      const reply = await getAIReply(history.slice(-20), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
       if (reply === NO_CREDITS) {
         const postParams = { channel: entry.channel, text: 'sorry, no more ai credits rn 💀 someone needs to top up' };
         if (!isDM) postParams.thread_ts = threadKey;
