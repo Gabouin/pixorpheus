@@ -2,7 +2,7 @@
 
 The official Slack bot of the [Pixl](https://hackclub.slack.com/archives/C0B5P4N0WHH) YSWS program, built by Gabin. Part entertainer, part support system, part AI with too much personality.
 
-Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in threads, remembers things about everyone, roasts people on demand, and generally acts like the class clown who's also weirdly useful.
+Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in threads, remembers things about everyone, roasts people on demand, and generally acts like a teenager.
 
 ---
 
