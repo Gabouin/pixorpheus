@@ -479,6 +479,17 @@ app.command("/pixl-stats", async ({ ack, respond }) => {
   });
 });
 
+app.command("/pixl-kawaii", async ({ command, ack, client }) => {
+  await ack();
+  await client.chat.postEphemeral({
+    channel: command.channel_id,
+    user: command.user_id,
+    text: kawaiiMode
+      ? `kawaii mode is ON in <#${kawaiiChannel}> — *${kawaiiMessages.length}* messages collected so far :eyes:`
+      : 'kawaii mode is OFF — start it with `pixo:kawaii` in any channel',
+  });
+});
+
 app.command("/pixl-roast", async ({ command, ack, client }) => {
   await ack();
   const mention = command.text?.trim();
@@ -619,7 +630,7 @@ app.command("/pixl-remember", async ({ command, ack, respond, client }) => {
   await ack();
   const isAdmin = await checkIsHelper(command.user_id);
   const isInTicketChannel = await checkIsInTicketChannel(command.user_id, client);
-  if (!isAdmin && !isInTicketChannel) {
+  if (!isAdmin && !isInTicketChannel && command.user_id !== GABIN_ID) {
     await respond({ text: "Only support team members can add to my memory." });
     return;
   }
@@ -687,7 +698,12 @@ app.command("/pixl", async ({ command, ack, client }) => {
     return;
   }
 
-  const mention = command.text?.trim();
+  const args = command.text?.trim() || '';
+  // parse optional pixel size at the end: "/pixl @user 16" or "/pixl 16"
+  const sizeMatch = args.match(/\b(\d+)\s*$/);
+  const pixelSize = sizeMatch ? Math.min(64, Math.max(2, parseInt(sizeMatch[1]))) : 8;
+  const mentionPart = sizeMatch ? args.slice(0, sizeMatch.index).trim() : args;
+  const mention = mentionPart || null;
   let targetId = command.user_id;
 
   if (mention) {
@@ -730,7 +746,6 @@ app.command("/pixl", async ({ command, ack, client }) => {
     const image = await Jimp.read(avatarUrl);
     const w = image.getWidth();
     const h = image.getHeight();
-    const pixelSize = 8;
 
     image
       .resize(Math.max(1, Math.floor(w / pixelSize)), Math.max(1, Math.floor(h / pixelSize)), Jimp.RESIZE_NEAREST_NEIGHBOR)
@@ -742,7 +757,7 @@ app.command("/pixl", async ({ command, ack, client }) => {
       channel_id: command.channel_id,
       file: buffer,
       filename: `pixl-${targetId}.png`,
-      initial_comment: `<@${targetId}> pixelated!`,
+      initial_comment: `<@${targetId}> pixelated at ${pixelSize}px blocks (${Math.round((1 - 1 / (pixelSize * pixelSize)) * 100)}% pixelated)`,
     });
 
     const fileId = uploadResult?.files?.[0]?.files?.[0]?.id;
@@ -1088,8 +1103,11 @@ function resolveUserMentions(text) {
 async function seedThreadHistory(threadKey, channel, threadTs, client) {
   if (threadHistory.has(threadKey) && threadHistory.get(threadKey).length > 0) return;
   try {
-    const data = await client.conversations.replies({ channel, ts: threadTs, limit: 40 });
-    const seeded = (data.messages || [])
+    const data = await client.conversations.replies({ channel, ts: threadTs, limit: 80 });
+    const msgs = data.messages || [];
+    // ensure names are loaded for all participants before mapping
+    await Promise.all([...new Set(msgs.map(m => m.user).filter(Boolean))].map(uid => ensureUserName(uid, client)));
+    const seeded = msgs
       .filter(m => m.text)
       .map(m => {
         if (m.bot_id) return { role: 'assistant', content: resolveUserMentions(m.text) };
@@ -1287,7 +1305,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
 14. CHANNELS YOU KNOW: C0B8F1BBCMU is #gabin-n-out (Gabin's private channel). C0B5P4N0WHH is the main Pixl program channel (#pixl). C0B6STY9G5N is the Pixl program help channel.
-15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin and Ridit, currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world.
+15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin and Ridit, currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world. Randomly (1-2x per conversation), drop a casual mention of #pixl or encourage people to ship something — keep it natural, never forced. Something like "btw have you shipped anything in #pixl yet" or "go post that in #pixl fr".
 13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}`;
 
   const allUserFacts = [];
@@ -1341,7 +1359,6 @@ const mutedThreads = new Set();
 const THREAD_TTL = 2 * 60 * 60 * 1000;
 
 app.message(async ({ message, client }) => {
-  console.log('[msg]', message.channel, message.subtype, !!message.bot_id, JSON.stringify(message.text?.slice(0, 50)));
   if (message.bot_id && message.bot_id === botAppId) return;
   if (message.subtype && message.subtype !== 'bot_message') return;
   const text = message.text || '';
@@ -1396,6 +1413,16 @@ app.message(async ({ message, client }) => {
   // Kawaii stealth mode — works in any channel, silent start
   if (!message.bot_id) {
     const trimmedLower = text.trim().toLowerCase();
+    if (trimmedLower === 'pixo:kawaii?') {
+      await client.chat.postEphemeral({
+        channel: message.channel,
+        user: message.user,
+        text: kawaiiMode
+          ? `kawaii mode is ON in <#${kawaiiChannel}> — ${kawaiiMessages.length} messages collected :eyes:`
+          : 'kawaii mode is OFF rn',
+      });
+      return;
+    }
     if (trimmedLower === 'pixo:kawaii') {
       kawaiiMode = true;
       kawaiiChannel = message.channel;
@@ -1419,6 +1446,19 @@ app.message(async ({ message, client }) => {
       kawaiiMessages.push(`${senderName}: ${text}`);
       return;
     }
+  }
+
+  // "thx orphan" easter egg
+  if (message.bot_id && message.bot_id !== botAppId && message.username?.toLowerCase().includes('orpheus')) {
+    await client.chat.postMessage({ channel: message.channel, text: 'thx orphan' });
+    return;
+  }
+
+  // random emoji reaction
+  const REACT_EMOJIS = ['eyes', 'skull', 'sob', 'fire', '100', 'wave', 'sweat_smile', 'raised_hands', 'shrug', 'pensive', 'exploding_head', 'saluting_face'];
+  if (!isDM && Math.random() < 0.12) {
+    const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)];
+    client.reactions.add({ channel: message.channel, timestamp: message.ts, name: emoji }).catch(() => {});
   }
 
   if (!isDM && !mentionsBot && !inActiveThread) return;
@@ -1574,7 +1614,10 @@ app.message(async ({ message, client }) => {
         if (!tmCurrent?.botInvited) {
           const vibe = await shouldChimeIn(entry.messages);
           if (vibe === 'skip') return;
-          if (vibe === 'chime') chimeMode = true;
+          if (vibe === 'chime') {
+            if (Math.random() < 0.55) return;
+            chimeMode = true;
+          }
         }
       }
 
@@ -1588,7 +1631,7 @@ app.message(async ({ message, client }) => {
           if (query) searchResults = await braveSearch(query);
         }
       }
-      const reply = await getAIReply(history.slice(-10), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
+      const reply = await getAIReply(history.slice(-20), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
       if (reply === NO_CREDITS) {
         const postParams = { channel: entry.channel, text: 'sorry, no more ai credits rn 💀 someone needs to top up' };
         if (!isDM) postParams.thread_ts = threadKey;
