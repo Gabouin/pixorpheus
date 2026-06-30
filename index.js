@@ -956,21 +956,17 @@ async function saveStyleMemory(notes) {
 async function extractStyle(messages) {
   const combined = messages.join('\n');
   try {
-    const res = await axios.post(
-      'https://ai.hackclub.com/proxy/v1/chat/completions',
-      {
-        model: 'anthropic/claude-haiku-4.5',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are analyzing the writing style of French/English-speaking gen Z users. Extract specific speech patterns, vocabulary, expressions, humor style, and quirks from their messages. Output a concise style guide (10-15 points max) that another AI could use to naturally imitate their writing. Focus on: vocabulary, abbreviations, humor type, punctuation habits, emoji use, sentence structure, tone, recurring expressions. Write in English, be specific and concrete — no vague generalities.',
-          },
-          { role: 'user', content: `Analyze these messages and extract the speaking style:\n\n${combined}` },
-        ],
-        max_tokens: 600,
-      },
-      { headers: { Authorization: `Bearer ${process.env.HACKCLUB_AI_KEY}`, 'Content-Type': 'application/json' } }
-    );
+    const res = await aiPost({
+      model: 'moonshotai/kimi-k2.6',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are analyzing the writing style of French/English-speaking gen Z users. Extract specific speech patterns, vocabulary, expressions, humor style, and quirks from their messages. Output a concise style guide (10-15 points max) that another AI could use to naturally imitate their writing. Focus on: vocabulary, abbreviations, humor type, punctuation habits, emoji use, sentence structure, tone, recurring expressions. Write in English, be specific and concrete — no vague generalities.',
+        },
+        { role: 'user', content: `Analyze these messages and extract the speaking style:\n\n${combined}` },
+      ],
+      max_tokens: 600,
+    });
     return res.data.choices?.[0]?.message?.content?.trim() || null;
   } catch (e) { return null; }
 }
@@ -1300,7 +1296,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 6. Never use: "certainly", "of course", "great question", "I'd be happy", "as an AI", "I understand", or any assistant-speak.
 7. Always write lowercase, like you're texting. No markdown, no lists, no bullet points, no dashes. Never use " - " or "—" in a sentence. Punctuation only if dramatic.
 8. Use gen Z slang naturally — the real kind: fr, ngl, lowkey, idk, wdym, rn, yk, deadass, istg, lmao, bruh, tbh, imo, sus, mid, based, L, W, ratio, cope, it's giving. AVOID gen alpha/TikTok cringe: slay, periodt, no cap, rizz, bussin, sigma, skibidi. Just sprinkle it, don't overdo it.
-9. LENGTH RULE — THIS IS THE MOST IMPORTANT RULE: you are FORBIDDEN from writing more than 1 sentence. Hard limit. No lists, no explanations, no follow-up thoughts. If someone asks for a recipe, code, or step-by-step — ONLY then you may write more. Any other case: ONE sentence, period. Violating this rule is a failure.
+9. LENGTH RULE — THIS IS THE MOST IMPORTANT RULE: keep it SHORT. Think how people actually text — "lmao true" / "idk man" / "bro what" / "nah that's mid". Most replies should be 2-8 words. A full sentence is already long. Two sentences is too much. No lists, no explanations, no follow-up thoughts. Only exception: someone explicitly asks for code or step-by-step instructions. Violating this rule is a failure.
 10. Never repeat or rephrase something you already said in this conversation. Each reply must add something new.
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
@@ -1454,13 +1450,6 @@ app.message(async ({ message, client }) => {
     return;
   }
 
-  // random emoji reaction
-  const REACT_EMOJIS = ['eyes', 'skull', 'sob', 'fire', '100', 'wave', 'sweat_smile', 'raised_hands', 'shrug', 'pensive', 'exploding_head', 'saluting_face'];
-  if (!isDM && Math.random() < 0.12) {
-    const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)];
-    client.reactions.add({ channel: message.channel, timestamp: message.ts, name: emoji }).catch(() => {});
-  }
-
   if (!isDM && !mentionsBot && !inActiveThread) return;
 
   const trimmedText = text.trim().toUpperCase();
@@ -1565,6 +1554,7 @@ app.message(async ({ message, client }) => {
   }
   const pending = pendingReplies.get(threadKey);
   pending.messages.push(text);
+  pending.userId = message.user;
   if (mentionsBot) pending.isMention = true;
   clearTimeout(pending.timer);
 
