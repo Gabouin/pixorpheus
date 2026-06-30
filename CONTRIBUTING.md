@@ -41,6 +41,10 @@ Before touching the ticket system or the AI prompt, read the relevant sections i
 - Changing the bot's personality in the system prompt without a good reason
 - Adding dependencies that aren't clearly necessary
 
+## License
+
+This project is licensed under **AGPL v3**. Any modifications you make and deploy as a hosted service must be published as open source under the same license.
+
 ## Opening a PR
 
 Open against `main`. Describe what you changed and why. If it touches the AI behavior or ticket flow, say so explicitly.
