@@ -53,11 +53,11 @@ app.event('message', async ({ event, client }) => {
 });
 
 function ticketBlocks(ticket) {
-  const { description, title, opened_by_slack_id, status, claimed_by_slack_id, ticket_number, permalink, msg_ts } = ticket;
+  const { description, title, opened_by_slack_id, status, claimed_by_slack_id, closed_by_slack_id, ticket_number, permalink, msg_ts } = ticket;
   const displayTitle = title || (description.length > 80 ? description.substring(0, 80) + '...' : description);
 
   let statusText;
-  if (status === 'closed') statusText = '✅ Resolved';
+  if (status === 'closed') statusText = closed_by_slack_id ? `✅ Resolved by <@${closed_by_slack_id}>` : '✅ Resolved';
   else if (claimed_by_slack_id) statusText = `🟡 Claimed by <@${claimed_by_slack_id}>`;
   else statusText = '🔴 Open — not claimed';
 
@@ -116,10 +116,11 @@ function ticketBlocks(ticket) {
     });
   }
 
-  if (ticket_number) {
+  const numericTicket = Number(ticket_number);
+  if (Number.isInteger(numericTicket) && numericTicket > 0) {
     blocks.push({
       type: 'context',
-      elements: [{ type: 'mrkdwn', text: `Ticket #${ticket_number}` }],
+      elements: [{ type: 'mrkdwn', text: `Ticket ${numericTicket}` }],
     });
   }
 
