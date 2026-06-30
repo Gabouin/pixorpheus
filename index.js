@@ -52,37 +52,135 @@ app.event('message', async ({ event, client }) => {
   }
 });
 
-async function handleNewQuestion(event, client) {
-  const text = event.text || '[no text — see thread for attachments]';
+function ticketBlocks(ticket) {
+  const { description, title, opened_by_slack_id, status, claimed_by_slack_id, ticket_number, permalink, msg_ts } = ticket;
+  const displayTitle = title || (description.length > 80 ? description.substring(0, 80) + '...' : description);
 
-  const ticketMsg = await client.chat.postMessage({
-    channel: process.env.SLACK_TICKET_CHANNEL,
-    text: `New question from <@${event.user}>`,
-    blocks: [
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*New ticket from <@${event.user}>*\n>${text}` }
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: 'Resolve from here' },
-            style: 'primary',
-            action_id: 'resolve_from_ticket_channel',
-            value: event.ts,
-          },
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: 'View thread' },
-            action_id: 'view_thread',
-            url: `https://slack.com/app_redirect?channel=${event.channel}&message_ts=${event.ts}`,
-          }
-        ]
-      }
-    ]
-  });
+  let statusText;
+  if (status === 'closed') statusText = '✅ Resolved';
+  else if (claimed_by_slack_id) statusText = `🟡 Claimed by <@${claimed_by_slack_id}>`;
+  else statusText = '🔴 Open — not claimed';
+
+  const actionElements = status === 'closed'
+    ? [{
+        type: 'button',
+        text: { type: 'plain_text', text: 'Reopen' },
+        action_id: 'reopen_ticket',
+        value: msg_ts,
+      }]
+    : [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: claimed_by_slack_id ? '↩️ Unclaim' : '🙋 Claim' },
+          action_id: 'claim_ticket',
+          value: msg_ts,
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Mark Resolved' },
+          style: 'primary',
+          action_id: 'resolve_from_ticket_channel',
+          value: msg_ts,
+        },
+      ];
+
+  const blocks = [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: statusText },
+    },
+    {
+      type: 'actions',
+      elements: actionElements,
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${displayTitle}*\nby <@${opened_by_slack_id}>` },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `>${(description || '').slice(0, 2900).replace(/\n/g, '\n>')}` },
+    },
+  ];
+
+  if (permalink) {
+    blocks.push({
+      type: 'actions',
+      elements: [{
+        type: 'button',
+        text: { type: 'plain_text', text: 'View in Slack' },
+        action_id: 'view_thread',
+        url: permalink,
+      }],
+    });
+  }
+
+  if (ticket_number) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `Ticket #${ticket_number}` }],
+    });
+  }
+
+  return blocks;
+}
+
+async function createTicket(event, title, client) {
+  const pending = pendingTickets.get(event.ts);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingTickets.delete(event.ts);
+  }
+
+  const description = event.text || '[no text — see thread for attachments]';
+
+  let permalink = null;
+  try {
+    const pl = await client.chat.getPermalink({ channel: event.channel, message_ts: event.ts });
+    permalink = pl.permalink;
+  } catch (e) {}
+
+  let ticketRow;
+  try {
+    const result = await db.query(
+      `INSERT INTO tickets (msg_ts, description, status, opened_by_slack_id, title, permalink)
+       VALUES ($1, $2, 'open', $3, $4, $5)
+       ON CONFLICT (msg_ts) DO UPDATE SET title = EXCLUDED.title, permalink = EXCLUDED.permalink
+       RETURNING *`,
+      [event.ts, description, event.user, title || null, permalink]
+    );
+    ticketRow = result.rows[0];
+  } catch (e) {
+    console.error('[createTicket] DB error:', e.message);
+    return;
+  }
+
+  let ticketMsg;
+  try {
+    ticketMsg = await client.chat.postMessage({
+      channel: process.env.SLACK_TICKET_CHANNEL,
+      text: `New ticket from <@${event.user}>${title ? `: ${title}` : ''}`,
+      blocks: ticketBlocks(ticketRow),
+    });
+  } catch (e) {
+    console.error('[createTicket] post error:', e.message);
+    return;
+  }
+
+  try {
+    await db.query(`UPDATE tickets SET ticket_msg_ts = $1 WHERE msg_ts = $2`, [ticketMsg.ts, event.ts]);
+  } catch (e) {}
+}
+
+async function handleNewQuestion(event, client) {
+  try {
+    await client.reactions.add({
+      channel: event.channel,
+      name: 'thinking_face',
+      timestamp: event.ts,
+    });
+  } catch (e) {}
 
   await client.chat.postMessage({
     channel: event.channel,
@@ -93,42 +191,58 @@ async function handleNewQuestion(event, client) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `Someone will be here to help you soon! In the meantime, check out the <${process.env.SLACK_FAQ_URL}|FAQ>.`
+          text: `Someone will be here to help you soon! In the meantime, check out the <${process.env.SLACK_FAQ_URL}|FAQ>.`,
         },
       },
       {
         type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: 'Mark as resolved' },
-            style: 'primary',
-            action_id: 'mark_resolved',
-            value: event.ts,
-          }
-        ],
+        elements: [{
+          type: 'button',
+          text: { type: 'plain_text', text: 'Mark as resolved' },
+          style: 'primary',
+          action_id: 'mark_resolved',
+          value: event.ts,
+        }],
       },
     ],
   });
 
   try {
-    await client.reactions.add({
+    await client.chat.postEphemeral({
       channel: event.channel,
-      name: 'thinking_face',
-      timestamp: event.ts,
+      user: event.user,
+      text: "Give your ticket a title to help the support team!",
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: 'Give your ticket a short title so helpers can triage it faster :)' },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Set title' },
+              action_id: 'open_title_modal',
+              value: event.ts,
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Skip' },
+              action_id: 'skip_title',
+              value: event.ts,
+            },
+          ],
+        },
+      ],
     });
   } catch (e) {}
 
-  try {
-    await db.query(
-      `INSERT INTO tickets (msg_ts, ticket_msg_ts, description, status, opened_by_slack_id)
-       VALUES ($1, $2, $3, 'open', $4)`,
-      [event.ts, ticketMsg.ts, text, event.user]
-    );
-  } catch (e) {
-    if (e.code === '23505') return;
-    throw e;
-  }
+  const timer = setTimeout(() => {
+    createTicket(event, null, app.client);
+  }, 3 * 60 * 1000);
+
+  pendingTickets.set(event.ts, { event, timer });
 }
 
 async function handleMessageInThread(event, client) {
@@ -253,21 +367,15 @@ async function resolveTicket(msgTs, resolverSlackId, client) {
     ],
   });
 
-  const ticket = await db.query(
-    `SELECT ticket_msg_ts FROM tickets WHERE msg_ts = $1`, [msgTs]
-  );
-  if (ticket.rows[0]?.ticket_msg_ts) {
+  const ticketResult = await db.query(`SELECT * FROM tickets WHERE msg_ts = $1`, [msgTs]);
+  const ticketRow = ticketResult.rows[0];
+  if (ticketRow?.ticket_msg_ts) {
     try {
       await client.chat.update({
         channel: process.env.SLACK_TICKET_CHANNEL,
-        ts: ticket.rows[0].ticket_msg_ts,
+        ts: ticketRow.ticket_msg_ts,
         text: `Ticket resolved by <@${resolverSlackId}>`,
-        blocks: [
-          {
-            type: 'section',
-            text: { type: 'mrkdwn', text: `*Ticket resolved by <@${resolverSlackId}>*` }
-          }
-        ]
+        blocks: ticketBlocks(ticketRow),
       });
     } catch (e) {}
   }
@@ -290,14 +398,11 @@ async function resolveTicket(msgTs, resolverSlackId, client) {
 }
 
 async function reopenTicket(msgTs, reopenerSlackId, client) {
-  const check = await db.query(
-    `SELECT status FROM tickets WHERE msg_ts = $1`, [msgTs]
-  );
+  const check = await db.query(`SELECT status FROM tickets WHERE msg_ts = $1`, [msgTs]);
   if (!check.rows[0] || check.rows[0].status === 'open') return;
 
   await db.query(
-    `UPDATE tickets SET status = 'open', closed_at = NULL,
-     closed_by_slack_id = NULL WHERE msg_ts = $1`,
+    `UPDATE tickets SET status = 'open', closed_at = NULL, closed_by_slack_id = NULL WHERE msg_ts = $1`,
     [msgTs]
   );
 
@@ -306,6 +411,19 @@ async function reopenTicket(msgTs, reopenerSlackId, client) {
     thread_ts: msgTs,
     text: `Ticket reopened by <@${reopenerSlackId}>.`,
   });
+
+  const ticketResult = await db.query(`SELECT * FROM tickets WHERE msg_ts = $1`, [msgTs]);
+  const ticketRow = ticketResult.rows[0];
+  if (ticketRow?.ticket_msg_ts) {
+    try {
+      await client.chat.update({
+        channel: process.env.SLACK_TICKET_CHANNEL,
+        ts: ticketRow.ticket_msg_ts,
+        text: `Ticket reopened by <@${reopenerSlackId}>`,
+        blocks: ticketBlocks(ticketRow),
+      });
+    } catch (e) {}
+  }
 
   try {
     await client.reactions.add({
@@ -407,6 +525,101 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
 });
 
 app.action('view_thread', async ({ ack }) => { await ack(); });
+
+app.action('claim_ticket', async ({ ack, body, client }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  const claimerId = body.user.id;
+  const channelId = body.channel.id;
+
+  const isHelper = await checkIsHelper(claimerId);
+  const isInTicketChannel = await checkIsInTicketChannel(claimerId, client);
+
+  if (!isHelper && !isInTicketChannel) {
+    await client.chat.postEphemeral({ channel: channelId, user: claimerId, text: "Only support team members can claim tickets." });
+    return;
+  }
+
+  let ticketRow;
+  try {
+    const result = await db.query(`SELECT * FROM tickets WHERE msg_ts = $1`, [msgTs]);
+    ticketRow = result.rows[0];
+  } catch (e) { return; }
+  if (!ticketRow || ticketRow.status === 'closed') return;
+
+  const newClaimedBy = ticketRow.claimed_by_slack_id === claimerId ? null : claimerId;
+  await db.query(`UPDATE tickets SET claimed_by_slack_id = $1 WHERE msg_ts = $2`, [newClaimedBy, msgTs]);
+
+  if (ticketRow.ticket_msg_ts) {
+    try {
+      await client.chat.update({
+        channel: process.env.SLACK_TICKET_CHANNEL,
+        ts: ticketRow.ticket_msg_ts,
+        text: newClaimedBy ? `Claimed by <@${newClaimedBy}>` : 'Ticket unclaimed',
+        blocks: ticketBlocks({ ...ticketRow, claimed_by_slack_id: newClaimedBy }),
+      });
+    } catch (e) {}
+  }
+});
+
+app.action('skip_title', async ({ ack, body }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  const pending = pendingTickets.get(msgTs);
+  if (!pending) return;
+  await createTicket(pending.event, null, app.client);
+});
+
+app.action('open_title_modal', async ({ ack, body, client }) => {
+  await ack();
+  const msgTs = body.actions[0].value;
+  try {
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        callback_id: 'title_modal',
+        private_metadata: msgTs,
+        notify_on_close: true,
+        title: { type: 'plain_text', text: 'Set ticket title' },
+        submit: { type: 'plain_text', text: 'Set title' },
+        close: { type: 'plain_text', text: 'Skip' },
+        blocks: [
+          {
+            type: 'input',
+            block_id: 'title_block',
+            label: { type: 'plain_text', text: 'Title' },
+            element: {
+              type: 'plain_text_input',
+              action_id: 'title_input',
+              placeholder: { type: 'plain_text', text: "e.g. \"Can't access my Pixl account\"" },
+              max_length: 100,
+            },
+          },
+        ],
+      },
+    });
+  } catch (e) {
+    console.error('[open_title_modal]', e.message);
+  }
+});
+
+app.view('title_modal', async ({ ack, body, view, client }) => {
+  await ack();
+  const msgTs = view.private_metadata;
+  const title = view.state.values?.title_block?.title_input?.value?.trim() || null;
+  const pending = pendingTickets.get(msgTs);
+  if (!pending) return;
+  await createTicket(pending.event, title, client);
+});
+
+app.view({ callback_id: 'title_modal', type: 'view_closed' }, async ({ ack, view }) => {
+  await ack();
+  const msgTs = view.private_metadata;
+  const pending = pendingTickets.get(msgTs);
+  if (!pending) return;
+  await createTicket(pending.event, null, app.client);
+});
 
 const PIXL_CHANNELS = ['C0B5P4N0WHH', 'C0B5UEMF4RW'];
 const PIXL_PROMO = `\n\n_Join <#C0B5P4N0WHH> to discover more Pixl commands!_`;
@@ -878,6 +1091,8 @@ let kawaiiMode = false;
 let kawaiiChannel = null;
 let kawaiiMessages = [];
 
+const pendingTickets = new Map();
+
 function parseFacts(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
@@ -1006,6 +1221,24 @@ async function initMemoryTables() {
       notes TEXT NOT NULL
     )
   `);
+  // Add new ticket columns if they don't exist yet
+  try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS title TEXT`); } catch (e) {}
+  try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS claimed_by_slack_id TEXT`); } catch (e) {}
+  try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS permalink TEXT`); } catch (e) {}
+  try {
+    await db.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='tickets' AND column_name='ticket_number'
+        ) THEN
+          CREATE SEQUENCE IF NOT EXISTS tickets_ticket_number_seq START 1;
+          ALTER TABLE tickets ADD COLUMN ticket_number INTEGER DEFAULT nextval('tickets_ticket_number_seq');
+        END IF;
+      END $$
+    `);
+  } catch (e) {}
 }
 
 function schedulePollClose(channel, messageTs, question, options, pollId, delay) {
