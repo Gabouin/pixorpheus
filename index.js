@@ -30,7 +30,7 @@ async function aiPost(body) {
   }
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
-  const orBody = { ...body, model: 'moonshotai/kimi-k2.6' };
+  const orBody = { ...body, model: 'deepseek/deepseek-chat' };
   try {
     const res = await axios.post(OPENROUTER_URL, orBody, {
       headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
@@ -262,74 +262,121 @@ function ticketBlocks(ticket) {
   return blocks;
 }
 
+const creatingTickets = new Set();
+
 async function createTicket(event, title, client) {
+  // Prevent concurrent calls for the same message
+  if (creatingTickets.has(event.ts)) return;
+  creatingTickets.add(event.ts);
+  setTimeout(() => creatingTickets.delete(event.ts), 10 * 60 * 1000);
+
   const pending = pendingTickets.get(event.ts);
   if (pending) {
     clearTimeout(pending.timer);
     pendingTickets.delete(event.ts);
   }
 
-  const description = event.text || '[no text — see thread for attachments]';
+  // Fetch the ticket row that was already created in handleNewQuestion
+  let ticketRow;
+  try {
+    const r = await db.query(`SELECT * FROM tickets WHERE msg_ts = $1 LIMIT 1`, [event.ts]);
+    ticketRow = r.rows[0];
+  } catch (e) {
+    console.error('[createTicket] SELECT error:', e.message);
+    creatingTickets.delete(event.ts);
+    return;
+  }
 
+  if (!ticketRow) {
+    // Fallback: ticket wasn't pre-created, insert it now
+    const description = event.text || '[no text — see thread for attachments]';
+    try {
+      const r = await db.query(
+        `INSERT INTO tickets (msg_ts, description, status, opened_by_slack_id) VALUES ($1, $2, 'open', $3) RETURNING *`,
+        [event.ts, description, event.user]
+      );
+      ticketRow = r.rows[0];
+    } catch (e) {
+      // Might be a unique violation if another call snuck in — try SELECT again
+      try {
+        const r = await db.query(`SELECT * FROM tickets WHERE msg_ts = $1 LIMIT 1`, [event.ts]);
+        ticketRow = r.rows[0];
+      } catch (_) {}
+    }
+    if (!ticketRow) {
+      console.error('[createTicket] could not find or create ticket for', event.ts);
+      creatingTickets.delete(event.ts);
+      return;
+    }
+  }
+
+  // If already posted to the ticket channel, only update title if provided
+  if (ticketRow.ticket_msg_ts) {
+    if (title) {
+      try {
+        const updated = await db.query(
+          `UPDATE tickets SET title = COALESCE($1, title) WHERE msg_ts = $2 RETURNING *`,
+          [title, event.ts]
+        );
+        await client.chat.update({
+          channel: process.env.SLACK_TICKET_CHANNEL,
+          ts: ticketRow.ticket_msg_ts,
+          text: `Ticket from <@${event.user}>: ${title}`,
+          blocks: ticketBlocks(updated.rows[0] || ticketRow),
+        });
+      } catch (e) {}
+    }
+    creatingTickets.delete(event.ts);
+    return;
+  }
+
+  // Get permalink and update title/permalink on the row
   let permalink = null;
   try {
     const pl = await client.chat.getPermalink({ channel: event.channel, message_ts: event.ts });
     permalink = pl.permalink;
   } catch (e) {}
 
-  let ticketRow;
   try {
-    const result = await db.query(
-      `INSERT INTO tickets (msg_ts, description, status, opened_by_slack_id, title, permalink)
-       VALUES ($1, $2, 'open', $3, $4, $5)
-       ON CONFLICT (msg_ts) DO UPDATE SET
-         title = COALESCE(EXCLUDED.title, tickets.title),
-         permalink = COALESCE(EXCLUDED.permalink, tickets.permalink)
-       RETURNING *`,
-      [event.ts, description, event.user, title || null, permalink]
+    const updated = await db.query(
+      `UPDATE tickets SET title = COALESCE($1, title), permalink = COALESCE($2, permalink) WHERE msg_ts = $3 RETURNING *`,
+      [title || null, permalink, event.ts]
     );
-    ticketRow = result.rows[0];
-  } catch (e) {
-    console.error('[createTicket] DB error:', e.message);
-    return;
-  }
+    if (updated.rows[0]) ticketRow = updated.rows[0];
+  } catch (e) {}
 
-  // Ticket already has a channel message — just update it if a title was provided
-  if (ticketRow.ticket_msg_ts) {
-    if (title) {
-      try {
-        await client.chat.update({
-          channel: process.env.SLACK_TICKET_CHANNEL,
-          ts: ticketRow.ticket_msg_ts,
-          text: `Ticket from <@${event.user}>: ${title}`,
-          blocks: ticketBlocks(ticketRow),
-        });
-      } catch (e) {}
-    }
-    return;
-  }
-
-  let ticketMsg;
+  // Post to ticket channel
   try {
-    ticketMsg = await client.chat.postMessage({
+    const ticketMsg = await client.chat.postMessage({
       channel: process.env.SLACK_TICKET_CHANNEL,
       text: `New ticket from <@${event.user}>${title ? `: ${title}` : ''}`,
       blocks: ticketBlocks(ticketRow),
     });
+    await db.query(`UPDATE tickets SET ticket_msg_ts = $1 WHERE msg_ts = $2`, [ticketMsg.ts, event.ts]);
   } catch (e) {
     console.error('[createTicket] post error:', e.message);
-    return;
   }
 
-  try {
-    await db.query(`UPDATE tickets SET ticket_msg_ts = $1 WHERE msg_ts = $2`, [ticketMsg.ts, event.ts]);
-  } catch (e) {}
+  creatingTickets.delete(event.ts);
 }
 
 async function handleNewQuestion(event, client) {
   if (processedHelpMsgs.has(event.ts)) return;
   processedHelpMsgs.add(event.ts);
   setTimeout(() => processedHelpMsgs.delete(event.ts), 10 * 60 * 1000);
+
+  // Create the ticket in DB immediately so mark_resolved always finds it
+  try {
+    await db.query(
+      `INSERT INTO tickets (msg_ts, description, status, opened_by_slack_id) VALUES ($1, $2, 'open', $3)`,
+      [event.ts, event.text || '[no text]', event.user]
+    );
+  } catch (e) {
+    // Unique violation = already exists from a previous call, that's fine
+    if (!e.message?.includes('unique') && !e.message?.includes('duplicate')) {
+      console.error('[handleNewQuestion] ticket insert error:', e.message);
+    }
+  }
 
   checkFAQAndSimilar(event, client).catch(() => {});
 
@@ -1372,8 +1419,6 @@ async function initMemoryTables() {
       notes TEXT NOT NULL
     )
   `);
-  // Ensure msg_ts has a unique index so ON CONFLICT (msg_ts) works
-  try { await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS tickets_msg_ts_idx ON tickets (msg_ts)`); } catch (e) {}
   // Add new ticket columns if they don't exist yet
   try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS title TEXT`); } catch (e) {}
   try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS claimed_by_slack_id TEXT`); } catch (e) {}
@@ -1733,7 +1778,7 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
         max_tokens: 120,
       });
     const msg = res.data.choices?.[0]?.message;
-    const rawContent = msg?.content || msg?.reasoning_content || '';
+    const rawContent = msg?.content || msg?.reasoning_content || msg?.reasoning || '';
     const content = rawContent
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/^skip\s*\n?/i, '')
