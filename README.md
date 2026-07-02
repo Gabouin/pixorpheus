@@ -255,7 +255,7 @@ Requires at least 5 messages. The extracted style overwrites the previous style 
 
 ## Dashboard
 
-A web dashboard for helpers and admins, running separately from the bot (`dashboard.js`).
+A web dashboard for helpers and admins, running separately from the bot (`dashboard.js`). Available at https://dashboard.gabintavernier.com and if you need access, please DM me on Slack.
 
 ### Access
 
