@@ -15,12 +15,13 @@ async function aiPost(body) {
     try {
       return await axios.post(ZEN_URL, zenBody, {
         headers: { Authorization: `Bearer ${ZEN_KEY}`, 'Content-Type': 'application/json' },
+        timeout: 20000,
       });
     } catch (e) {
       if (e.response?.status === 402 || e.response?.status === 429) {
         const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
       }
-      throw e;
+      console.error('[zen] failed, falling back to OpenRouter:', e.response?.status || e.message);
     }
   }
   const openrouterKey = process.env.OPENROUTER_API_KEY;
@@ -320,6 +321,10 @@ async function createTicket(event, title, client) {
 }
 
 async function handleNewQuestion(event, client) {
+  if (processedHelpMsgs.has(event.ts)) return;
+  processedHelpMsgs.add(event.ts);
+  setTimeout(() => processedHelpMsgs.delete(event.ts), 10 * 60 * 1000);
+
   checkFAQAndSimilar(event, client).catch(() => {});
 
   try {
@@ -1230,6 +1235,8 @@ let kawaiiChannel = null;
 let kawaiiMessages = [];
 
 const pendingTickets = new Map();
+const processedHelpMsgs = new Set();
+const processedMsgTs = new Set();
 
 function parseFacts(raw) {
   if (Array.isArray(raw)) return raw;
@@ -1680,26 +1687,34 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 16. CUSTOM EMOJIS — you have these Slack custom emojis available. Use them IN YOUR TEXT MESSAGES occasionally — only when one genuinely fits, max 1 per reply, and not every reply. Write them as :emoji_name: inline. Meanings: :wiltedrose: sad/withered, :yay: excited/happy, :loll: laughing hard, :sad-pf: sad face, :skulk: sneaky lurking, :noooovanish: disappearing/poof, :angy: angry, :yesyes: emphatic yes, :blobhaj_party: party/hype, :shocked: shocked, :upvote: agree/upvote, :lets-fucking-gooo: MAX HYPE, :stuck_out_tongue_closed_eyes: playful teasing, :huh3d: confused/what, :thumbs-up: approve, :3c: cute/kawaii, :byee: bye, :hii: hello, :nono: no/stop, :hehehe: sneaky laugh, :awww: cute/sweet, :alibaba-admire: impressed, :alibaba-grin: big grin, :cryign: crying, :heavysob: heavy sobbing, :brokenheart: heartbreak, :nyan: fun/rainbow, :cat-gun: wtf/chaotic, :isob: sobbing, :sob-pray: desperate sob, :agadance: dancing, :cat-woah: woah!, :cat-heart: love/cute, :communist: ironic/Big Brother energy, :eyes_wtf: WTF, :eyes_shaking: nervous/shocked, :eyes-out-of-head: mind blown, :orpheus-love: orpheus love, :orpheus-baguette: french/baguette, :orphanage: orpheus ref, :orpheus-explode: explosion/mind blown, :hyper-dino-wave: excited wave, :pepedyingoflaughter: DYING of laughter, :pet-gabin: petting Gabin (use when Gabin says something cute/dumb), :pet-ridit: petting Ridit, :pet-maxx: petting Maxx, :yapa: nothing/nope (French), :yay-gay: gay celebration, :wagay: gay wave, :gay-flag: pride, :bhjflag_gay: pride flag, :spinny_cat_gay: spinning pride cat, :1984: Big Brother/surveillance irony.
 REACT RULE: if you want to REACT to the message that triggered your reply (add an emoji reaction to it), add exactly this on a NEW LINE at the VERY END of your response: REACT: :emoji_name: — one emoji from the list above, only when it genuinely fits. Omit the REACT line completely if nothing fits. Never explain the reaction.`;
 
+  // Only include the current user's facts (full) + other users mentioned in history (brief)
+  const mentionedUids = new Set();
+  if (userId) mentionedUids.add(userId);
+  for (const msg of history) {
+    const m = (msg.content || '').matchAll(/<@([A-Z0-9]+)>/g);
+    for (const match of m) mentionedUids.add(match[1]);
+  }
   const allUserFacts = [];
-  for (const [uid, ufacts] of userMemory.entries()) {
+  for (const uid of mentionedUids) {
+    const ufacts = userMemory.get(uid);
     if (!ufacts?.length) continue;
     const name = getDisplayName(uid) || uid;
-    const facts = parseFacts(ufacts);
-    const traits = personalityMemory.get(uid);
-    const parsedTraits = parseFacts(traits);
+    const facts = parseFacts(ufacts).slice(0, uid === userId ? 20 : 8);
+    const traits = parseFacts(personalityMemory.get(uid)).slice(0, 3);
     let entry = `${name}:\n${facts.map(f => `- ${f}`).join('\n')}`;
-    if (parsedTraits.length) entry += `\n  personality: ${parsedTraits.join(', ')}`;
+    if (traits.length) entry += `\n  vibe: ${traits.join(', ')}`;
     allUserFacts.push(entry);
   }
-  const memoryBlock = [
-    allUserFacts.length ? `PEOPLE YOU KNOW (use personality insights to adapt your tone with each person; if someone asks "what do you know about X" or "tell me about X", look them up here and share naturally — don't pretend you don't know):\n${allUserFacts.join('\n')}` : null,
-    programMemory.length ? `ABOUT THIS SERVER:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
-    styleNotes ? `YOUR SPEAKING STYLE (Gabin and Alex trained you — adopt their vibe naturally, you've absorbed how they actually talk):\n${styleNotes}` : null,
-    searchResults ? `WEB SEARCH RESULTS (use these to answer accurately):\n${searchResults}` : null,
+  let memoryBlock = [
+    allUserFacts.length ? `PEOPLE IN THIS CONVO:\n${allUserFacts.join('\n')}` : null,
+    programMemory.length ? `SERVER FACTS:\n${programMemory.map(f => `- ${f}`).join('\n')}` : null,
+    styleNotes ? `YOUR STYLE: ${styleNotes.slice(0, 400)}` : null,
+    searchResults ? `WEB SEARCH:\n${searchResults.slice(0, 1500)}` : null,
   ].filter(Boolean).join('\n\n');
+  if (memoryBlock.length > 3000) memoryBlock = memoryBlock.slice(0, 3000) + '\n[truncated]';
 
   const messagesWithMemory = memoryBlock
-    ? [{ role: 'user', content: memoryBlock }, { role: 'assistant', content: 'got it' }, ...history]
+    ? [{ role: 'user', content: memoryBlock }, { role: 'assistant', content: 'k' }, ...history]
     : history;
 
   try {
@@ -1733,6 +1748,8 @@ const THREAD_TTL = 2 * 60 * 60 * 1000;
 app.message(async ({ message, client }) => {
   if (message.bot_id && message.bot_id === botAppId) return;
   if (message.subtype && message.subtype !== 'bot_message') return;
+  if (message.ts && processedMsgTs.has(message.ts)) return;
+  if (message.ts) { processedMsgTs.add(message.ts); setTimeout(() => processedMsgTs.delete(message.ts), 60000); }
   const text = message.text || '';
   if (text.startsWith('##')) return;
 
@@ -1891,6 +1908,8 @@ app.message(async ({ message, client }) => {
     mutedThreads.add(message.thread_ts);
     const tm = threadMemory.get(message.thread_ts);
     if (tm) tm.botInvited = false;
+    const pendingStop = pendingReplies.get(threadKey);
+    if (pendingStop) { clearTimeout(pendingStop.timer); pendingReplies.delete(threadKey); }
     await client.chat.postMessage({ channel: message.channel, thread_ts: message.thread_ts, text: "ok i'm out 🫡" });
     return;
   }
@@ -2055,7 +2074,7 @@ app.message(async ({ message, client }) => {
           if (query) searchResults = await braveSearch(query);
         }
       }
-      const rawReply = await getAIReply(history.slice(-20), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
+      const rawReply = await getAIReply(history.slice(-12), entry.userId, threadMemory.get(threadKey), chimeMode, searchResults);
       if (rawReply === NO_CREDITS) {
         const postParams = { channel: entry.channel, text: 'sorry, no more ai credits rn 💀 someone needs to top up' };
         if (!isDM) postParams.thread_ts = threadKey;
