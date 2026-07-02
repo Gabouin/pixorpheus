@@ -20,7 +20,11 @@ async function aiPost(body) {
       const content = res.data?.choices?.[0]?.message?.content;
       const reasoning = res.data?.choices?.[0]?.message?.reasoning_content;
       console.log('[zen] ok — content:', JSON.stringify(content)?.slice(0, 80), '| reasoning:', !!reasoning);
-      return res;
+      if (!content && reasoning) {
+        console.warn('[zen] content empty but reasoning present — model is reasoning-only, falling back to OpenRouter');
+      } else {
+        return res;
+      }
     } catch (e) {
       if (e.response?.status === 402) {
         console.error('[zen] no credits (402)');
