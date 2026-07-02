@@ -23,6 +23,7 @@ async function aiPost(body) {
       return res;
     } catch (e) {
       if (e.response?.status === 402 || e.response?.status === 429) {
+        console.error('[zen] no credits / rate limit (status', e.response?.status, '):', e.response?.data?.error?.message || e.message);
         const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
       }
       console.error('[zen] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message, '— falling back to OpenRouter');
