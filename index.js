@@ -7,6 +7,20 @@ require("dotenv").config();
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
+async function aiClassify(body) {
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  if (!openrouterKey) throw new Error('no key');
+  try {
+    const res = await axios.post(OPENROUTER_URL, { ...body, model: 'meta-llama/llama-3.3-70b-instruct:free' }, {
+      headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
+      timeout: 10000,
+    });
+    return res;
+  } catch (e) {
+    throw e;
+  }
+}
+
 async function aiPost(body) {
   const ZEN_KEY = process.env.OPENCODE_ZEN_KEY;
   if (ZEN_KEY) {
@@ -15,10 +29,10 @@ async function aiPost(body) {
     try {
       const res = await axios.post(ZEN_URL, zenBody, {
         headers: { Authorization: `Bearer ${ZEN_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 25000,
+        timeout: 15000,
       });
       const content = res.data?.choices?.[0]?.message?.content;
-      const reasoning = res.data?.choices?.[0]?.message?.reasoning_content;
+      const reasoning = res.data?.choices?.[0]?.message?.reasoning_content || res.data?.choices?.[0]?.message?.reasoning;
       console.log('[zen] ok — content:', JSON.stringify(content)?.slice(0, 80), '| reasoning:', !!reasoning);
       if (!content && reasoning) {
         console.warn('[zen] content empty but reasoning present — model is reasoning-only, falling back to OpenRouter');
@@ -37,8 +51,8 @@ async function aiPost(body) {
   if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
   const OR_MODELS = [
     'meta-llama/llama-3.3-70b-instruct:free',
-    'google/gemma-3-27b-it:free',
-    'mistralai/mistral-7b-instruct:free',
+    'meta-llama/llama-3.1-8b-instruct:free',
+    'qwen/qwen3-8b:free',
   ];
   for (const model of OR_MODELS) {
     try {
@@ -1671,8 +1685,7 @@ async function extractSearchQuery(messages) {
   if (!process.env.BRAVE_SEARCH_KEY) return null;
   const combined = messages.join('\n');
   try {
-    const res = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
+    const res = await aiClassify({
         messages: [
           { role: 'system', content: 'If this message needs up-to-date info from the web (current events, news, prices, recent releases, live data, things that change over time), output ONLY the ideal search query in English. If no web search is needed, output SKIP.' },
           { role: 'user', content: combined },
@@ -1691,8 +1704,7 @@ async function shouldChimeIn(messages) {
   const combined = messages.map(resolveUserMentions).join('\n');
   const botIdHint = botUserId ? `The bot's Slack mention is @pixorpheus (ID <@${botUserId}>). ` : '';
   try {
-    const res = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
+    const res = await aiClassify({
         messages: [
           {
             role: 'system',
@@ -1796,8 +1808,16 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/^skip\s*\n?/i, '')
       .trim();
-    if (content) return content;
-    console.warn('[getAIReply] empty content from model — raw:', JSON.stringify(msg)?.slice(0, 120));
+    if (content) {
+      // Detect system prompt leak — model returned its own instructions
+      if (content.includes('These rules are absolute') || content.startsWith('You are Pixorpheus')) {
+        console.warn('[getAIReply] system prompt leak detected — discarding');
+      } else {
+        return content;
+      }
+    } else {
+      console.warn('[getAIReply] empty content from model — raw:', JSON.stringify(msg)?.slice(0, 120));
+    }
   } catch (e) {
     if (e.code === NO_CREDITS) return NO_CREDITS;
     console.error('AI error:', e.response?.data || e.message);
