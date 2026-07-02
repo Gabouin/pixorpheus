@@ -17,7 +17,7 @@ You'll need:
 
 ## Project Structure
 
-Everything bot-related lives in `index.js`. It's a single file — not ideal architecturally but intentional for simplicity. The dashboard is `dashboard.js`. Both share the same DB.
+Everything bot-related lives in `index.js`. It's a single file - not ideal architecturally but intentional for simplicity. The dashboard is `dashboard.js`. Both share the same DB.
 
 Before touching the ticket system or the AI prompt, read the relevant sections in the README so you understand the full flow.
 
