@@ -22,8 +22,8 @@ async function aiPost(body) {
       console.log('[zen] ok — content:', JSON.stringify(content)?.slice(0, 80), '| reasoning:', !!reasoning);
       return res;
     } catch (e) {
-      if (e.response?.status === 402 || e.response?.status === 429) {
-        console.error('[zen] no credits / rate limit (status', e.response?.status, '):', e.response?.data?.error?.message || e.message);
+      if (e.response?.status === 402) {
+        console.error('[zen] no credits (402)');
         const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
       }
       console.error('[zen] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message, '— falling back to OpenRouter');
@@ -1779,7 +1779,7 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
         max_tokens: 120,
       });
     const msg = res.data.choices?.[0]?.message;
-    const rawContent = msg?.content || msg?.reasoning_content || msg?.reasoning || '';
+    const rawContent = msg?.content || '';
     const content = rawContent
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/^skip\s*\n?/i, '')
