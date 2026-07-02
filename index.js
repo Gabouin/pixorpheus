@@ -13,27 +13,33 @@ async function aiPost(body) {
     const ZEN_URL = process.env.OPENCODE_ZEN_URL || 'https://opencode.ai/zen/v1/chat/completions';
     const zenBody = { ...body, model: process.env.ZEN_MODEL || 'opencode/deepseek-v4-flash-free' };
     try {
-      return await axios.post(ZEN_URL, zenBody, {
+      const res = await axios.post(ZEN_URL, zenBody, {
         headers: { Authorization: `Bearer ${ZEN_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 20000,
+        timeout: 25000,
       });
+      const content = res.data?.choices?.[0]?.message?.content;
+      const reasoning = res.data?.choices?.[0]?.message?.reasoning_content;
+      console.log('[zen] ok — content:', JSON.stringify(content)?.slice(0, 80), '| reasoning:', !!reasoning);
+      return res;
     } catch (e) {
       if (e.response?.status === 402 || e.response?.status === 429) {
         const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
       }
-      console.error('[zen] failed, falling back to OpenRouter:', e.response?.status || e.message);
+      console.error('[zen] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message, '— falling back to OpenRouter');
     }
   }
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
   const orBody = { ...body, model: 'moonshotai/kimi-k2.6' };
   try {
-    return await axios.post(OPENROUTER_URL, orBody, {
+    const res = await axios.post(OPENROUTER_URL, orBody, {
       headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
-      timeout: 20000,
+      timeout: 25000,
     });
+    console.log('[openrouter] ok — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
+    return res;
   } catch (e) {
-    console.error('[aiPost] OpenRouter error:', e.response?.data || e.message);
+    console.error('[openrouter] error (status', e.response?.status, '):', e.response?.data || e.message);
     const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
   }
 }
@@ -1726,11 +1732,14 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
         ],
         max_tokens: 120,
       });
-    const content = res.data.choices?.[0]?.message?.content
-      ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
-      ?.replace(/^skip\s*\n?/i, '')
-      ?.trim();
+    const msg = res.data.choices?.[0]?.message;
+    const rawContent = msg?.content || msg?.reasoning_content || '';
+    const content = rawContent
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/^skip\s*\n?/i, '')
+      .trim();
     if (content) return content;
+    console.warn('[getAIReply] empty content from model — raw:', JSON.stringify(msg)?.slice(0, 120));
   } catch (e) {
     if (e.code === NO_CREDITS) return NO_CREDITS;
     console.error('AI error:', e.response?.data || e.message);
