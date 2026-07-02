@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --check /Users/gabin/Desktop/pixorpheus/index.js)"
+      "Bash(node --check /Users/gabin/Desktop/pixorpheus/index.js)",
+      "Bash(git fetch *)"
     ]
   }
 }
