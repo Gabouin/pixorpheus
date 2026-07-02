@@ -52,6 +52,119 @@ app.event('message', async ({ event, client }) => {
   }
 });
 
+async function checkFAQAndSimilar(event, client) {
+  const question = event.text || '';
+  if (question.length < 15) return;
+
+  let rows = [];
+  try {
+    const result = await db.query(
+      `SELECT description, permalink, title FROM tickets
+       WHERE status = 'closed' AND description IS NOT NULL AND description != '[no text — see thread for attachments]'
+       ORDER BY closed_at DESC LIMIT 60`
+    );
+    rows = result.rows;
+  } catch (e) { return; }
+  if (!rows.length) return;
+
+  try {
+    const ticketList = rows.map((t, i) => {
+      const label = t.title || t.description.slice(0, 100);
+      return `${i + 1}. ${label}`;
+    }).join('\n');
+
+    const res = await aiPost({
+      model: 'deepseek/deepseek-v4-pro',
+      messages: [
+        {
+          role: 'system',
+          content: 'You help match support questions to previously resolved tickets. If the new question is clearly similar to one of the listed past tickets, reply with only that ticket\'s number. If none match well enough, reply with NONE. Be strict — only match if it\'s genuinely the same problem.',
+        },
+        { role: 'user', content: `New question: "${question}"\n\nPast resolved tickets:\n${ticketList}` },
+      ],
+      max_tokens: 5,
+    });
+
+    const answer = res.data.choices?.[0]?.message?.content?.trim();
+    const idx = parseInt(answer) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+
+    const match = rows[idx];
+    const label = match.title || match.description.slice(0, 80);
+    const linkPart = match.permalink ? ` Check <${match.permalink}|this similar resolved question> — it might answer yours.` : '';
+
+    await client.chat.postEphemeral({
+      channel: event.channel,
+      user: event.user,
+      text: `We found a similar resolved question that might help!`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:mag: We found a similar question that was already resolved:\n*${label}*${linkPart}\n\nIf this doesn't answer your question, your ticket will still be created — a helper will follow up soon.`,
+          },
+        },
+        ...(process.env.SLACK_FAQ_URL ? [{
+          type: 'actions',
+          elements: [{
+            type: 'button',
+            text: { type: 'plain_text', text: 'View FAQ' },
+            url: process.env.SLACK_FAQ_URL,
+            action_id: 'view_faq',
+          }],
+        }] : []),
+      ],
+    });
+  } catch (e) {}
+}
+
+async function autoCloseOldTickets() {
+  try {
+    const result = await db.query(
+      `SELECT * FROM tickets
+       WHERE status = 'open'
+         AND to_timestamp(msg_ts::float) < NOW() - INTERVAL '7 days'
+         AND COALESCE(last_msg_at, to_timestamp(msg_ts::float)) < NOW() - INTERVAL '7 days'`
+    );
+
+    for (const ticket of result.rows) {
+      try {
+        await app.client.chat.postMessage({
+          channel: process.env.SLACK_HELP_CHANNEL,
+          thread_ts: ticket.msg_ts,
+          text: "This ticket has been open for 7 days with no activity and is now automatically closed. If you still need help, just post a new message in this channel with the same question and a helper will get back to you.",
+        });
+
+        await db.query(
+          `UPDATE tickets SET status = 'closed', closed_at = NOW() WHERE msg_ts = $1`,
+          [ticket.msg_ts]
+        );
+
+        const updatedTicket = { ...ticket, status: 'closed' };
+        if (ticket.ticket_msg_ts) {
+          try {
+            await app.client.chat.update({
+              channel: process.env.SLACK_TICKET_CHANNEL,
+              ts: ticket.ticket_msg_ts,
+              text: 'Ticket auto-closed after 7 days of inactivity',
+              blocks: ticketBlocks(updatedTicket),
+            });
+          } catch (e) {}
+        }
+
+        try { await app.client.reactions.add({ channel: process.env.SLACK_HELP_CHANNEL, name: 'white_check_mark', timestamp: ticket.msg_ts }); } catch (e) {}
+        try { await app.client.reactions.remove({ channel: process.env.SLACK_HELP_CHANNEL, name: 'thinking_face', timestamp: ticket.msg_ts }); } catch (e) {}
+      } catch (e) {
+        console.error('[autoClose] ticket error:', e.message);
+      }
+    }
+    if (result.rows.length) console.log(`[autoClose] closed ${result.rows.length} stale ticket(s)`);
+  } catch (e) {
+    console.error('[autoClose]', e.message);
+  }
+}
+
 function ticketBlocks(ticket) {
   const { description, title, opened_by_slack_id, status, claimed_by_slack_id, closed_by_slack_id, ticket_number, permalink, msg_ts } = ticket;
   const displayTitle = title || (description.length > 80 ? description.substring(0, 80) + '...' : description);
@@ -175,6 +288,8 @@ async function createTicket(event, title, client) {
 }
 
 async function handleNewQuestion(event, client) {
+  checkFAQAndSimilar(event, client).catch(() => {});
+
   try {
     await client.reactions.add({
       channel: event.channel,
@@ -526,6 +641,7 @@ app.action('reopen_ticket', async ({ ack, body, client }) => {
 });
 
 app.action('view_thread', async ({ ack }) => { await ack(); });
+app.action('view_faq', async ({ ack }) => { await ack(); });
 
 app.action('claim_ticket', async ({ ack, body, client }) => {
   await ack();
@@ -1635,6 +1751,63 @@ app.message(async ({ message, client }) => {
   // Kawaii stealth mode — works in any channel, silent start
   if (!message.bot_id) {
     const trimmedLower = text.trim().toLowerCase();
+    if (trimmedLower.startsWith('pixo:recap')) {
+      const arg = text.trim().split(/\s+/)[1]?.toLowerCase();
+      let oldest;
+      if (arg === 'today') {
+        const d = new Date(); d.setHours(0, 0, 0, 0);
+        oldest = String(d.getTime() / 1000);
+      } else if (arg) {
+        const m = arg.match(/^(\d+)(h|min|d)$/i);
+        if (m) {
+          const amount = parseInt(m[1]);
+          const unit = m[2].toLowerCase();
+          const ms = unit === 'min' ? amount * 60000 : unit === 'h' ? amount * 3600000 : amount * 86400000;
+          oldest = String((Date.now() - ms) / 1000);
+        }
+      }
+      if (!oldest) oldest = String((Date.now() - 6 * 3600000) / 1000);
+
+      try {
+        let msgs;
+        if (message.thread_ts) {
+          const data = await client.conversations.replies({ channel: message.channel, ts: message.thread_ts, limit: 100 });
+          msgs = (data.messages || []).filter(m => m.text && m.ts !== message.ts);
+        } else {
+          const data = await client.conversations.history({ channel: message.channel, oldest, limit: 100 });
+          msgs = (data.messages || []).filter(m => m.text && !m.bot_id).reverse();
+        }
+
+        if (!msgs?.length) {
+          await client.chat.postEphemeral({ channel: message.channel, user: message.user, text: 'nothing to recap here' });
+          return;
+        }
+
+        await Promise.all([...new Set(msgs.map(m => m.user).filter(Boolean))].map(uid => ensureUserName(uid, client)));
+        const combined = msgs.map(m => `${getDisplayName(m.user) || m.user || 'someone'}: ${m.text}`).join('\n');
+
+        const res = await aiPost({
+          model: 'deepseek/deepseek-v4-pro',
+          messages: [
+            { role: 'system', content: 'Summarize this Slack conversation concisely in 3-5 bullet points. Focus on key topics, decisions, and anything actionable. English only. No intro sentence, just the bullets.' },
+            { role: 'user', content: combined.slice(0, 6000) },
+          ],
+          max_tokens: 300,
+        });
+
+        const summary = res.data.choices?.[0]?.message?.content?.trim();
+        await client.chat.postEphemeral({
+          channel: message.channel,
+          user: message.user,
+          thread_ts: message.thread_ts || undefined,
+          text: summary || 'could not generate recap',
+        });
+      } catch (e) {
+        await client.chat.postEphemeral({ channel: message.channel, user: message.user, text: 'recap failed ngl' });
+      }
+      return;
+    }
+
     if (trimmedLower === 'pixo:kawaii?') {
       await client.chat.postEphemeral({
         channel: message.channel,
@@ -2153,6 +2326,8 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await loadProgramMemory();
   await loadPendingPolls();
   await loadStyleMemory();
+  autoCloseOldTickets().catch(() => {});
+  setInterval(() => autoCloseOldTickets().catch(() => {}), 24 * 60 * 60 * 1000);
   console.log("Pixl bot is running.");
 })();
 
