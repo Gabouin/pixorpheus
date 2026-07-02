@@ -35,18 +35,26 @@ async function aiPost(body) {
   }
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
-  const orBody = { ...body, model: 'meta-llama/llama-3.3-70b-instruct:free' };
-  try {
-    const res = await axios.post(OPENROUTER_URL, orBody, {
-      headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
-      timeout: 25000,
-    });
-    console.log('[openrouter] ok — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
-    return res;
-  } catch (e) {
-    console.error('[openrouter] error (status', e.response?.status, '):', e.response?.data || e.message);
-    const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
+  const OR_MODELS = [
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemma-3-27b-it:free',
+    'mistralai/mistral-7b-instruct:free',
+  ];
+  for (const model of OR_MODELS) {
+    try {
+      const orBody = { ...body, model };
+      const res = await axios.post(OPENROUTER_URL, orBody, {
+        headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
+        timeout: 25000,
+      });
+      console.log('[openrouter] ok (' + model + ') — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
+      return res;
+    } catch (e) {
+      console.warn('[openrouter] ' + model + ' failed (status ' + e.response?.status + ') — trying next');
+    }
   }
+  console.error('[openrouter] all models failed');
+  const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
 }
 
 const { App } = require("@slack/bolt");
