@@ -1056,7 +1056,7 @@ app.event('member_joined_channel', async ({ event, client }) => {
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: posted.ts,
-      text: `cc <@${GABIN_ID}>`,
+      text: `cc <@${GABIN_ID}> <@${RIDIT_ID}>`,
     });
   } catch (e) {
     console.error('welcome error:', e.message);
@@ -1431,6 +1431,7 @@ Short phrases only, max 8 words each, one per line. Only note things that feel c
 }
 
 const GABIN_ID = 'U0A2SJ7B739';
+const RIDIT_ID = 'U0ARC79GEAV';
 
 async function braveSearch(query) {
   try {
