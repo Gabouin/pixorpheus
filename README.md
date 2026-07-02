@@ -17,6 +17,8 @@ Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in th
 - [Inline Commands (pixo:)](#inline-commands-pixo)
 - [Thread Controls](#thread-controls)
 - [AI System](#ai-system)
+- [Smart FAQ](#smart-faq)
+- [Auto-Close](#auto-close)
 - [Help & Ticket System](#help--ticket-system)
 - [Style Listening System](#style-listening-system)
 - [Training Mode](#training-mode)
@@ -99,6 +101,7 @@ These are typed directly in a message (not slash commands). They only work in ch
 | `pixo:kawaii` | Any channel Pixorpheus is in | Start listening mode - Pixorpheus begins collecting messages in that channel to learn the writing style |
 | `pixo:notkawaii` | Same channel | Stop listening mode - processes the collected messages and saves the speaking style |
 | `pixo:kawaii?` | Anywhere | Check if listening mode is active - shows the channel and how many messages have been collected (ephemeral) |
+| `pixo:recap` | Any channel | Summarize the last 6 hours of messages in the channel, shown only to you (ephemeral). Use `pixo:recap today` to summarize since midnight, `pixo:recap 2h` for a custom timeframe (supports `min`, `h`, `d`). In a thread, it summarizes the thread instead. |
 
 > Only one listening session can be active at a time. Starting a new one in a different channel resets the previous one.
 
@@ -166,6 +169,38 @@ It can also react to messages with these emojis (the AI decides when it's approp
 - **Orpheus bot** - automatically replies "thx orphan" immediately whenever Orpheus posts in the same channel
 - **New members** - posts a random welcome message when someone joins the Pixl channel (`#pixl`) and pings Gabin in the thread
 - **Short replies** - the bot is trained to reply like someone actually texting: 2–8 words most of the time
+
+---
+
+## Smart FAQ
+
+When a user posts in the help channel, Pixorpheus automatically checks whether the question was already answered before creating a ticket.
+
+### How it works
+
+1. As soon as a message lands in the help channel, Pixorpheus queries the last 60 resolved tickets (by description and title)
+2. It uses DeepSeek to compare the new question against all of them and look for a semantic match
+3. If a similar resolved ticket is found, the user gets an **ephemeral** message with a link to that ticket and a "View FAQ" button - before they even have to wait for a reply
+4. The ticket is still created normally so a helper can follow up if needed
+
+The FAQ check runs in parallel with the ticket creation flow - it never slows anything down.
+
+- **Language:** English only (the bot reminds users to post in English if needed)
+- **Threshold:** Only high-confidence matches are surfaced - vague similarity is ignored
+
+---
+
+## Auto-Close
+
+Tickets that have been open for more than **7 days** with no activity are automatically closed.
+
+### Rules
+
+- A ticket qualifies if: it has been open for 7+ days AND the last message in the thread is also 7+ days old
+- At closure, Pixorpheus posts a message in the thread explaining the ticket was auto-closed due to inactivity, and tells the user to open a new ticket if the issue is still relevant
+- The ticket channel message is updated to show the resolved status
+
+Auto-close runs once at startup and once every 24 hours.
 
 ---
 

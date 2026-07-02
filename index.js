@@ -275,13 +275,30 @@ async function createTicket(event, title, client) {
     const result = await db.query(
       `INSERT INTO tickets (msg_ts, description, status, opened_by_slack_id, title, permalink)
        VALUES ($1, $2, 'open', $3, $4, $5)
-       ON CONFLICT (msg_ts) DO UPDATE SET title = EXCLUDED.title, permalink = EXCLUDED.permalink
+       ON CONFLICT (msg_ts) DO UPDATE SET
+         title = COALESCE(EXCLUDED.title, tickets.title),
+         permalink = COALESCE(EXCLUDED.permalink, tickets.permalink)
        RETURNING *`,
       [event.ts, description, event.user, title || null, permalink]
     );
     ticketRow = result.rows[0];
   } catch (e) {
     console.error('[createTicket] DB error:', e.message);
+    return;
+  }
+
+  // Ticket already has a channel message — just update it if a title was provided
+  if (ticketRow.ticket_msg_ts) {
+    if (title) {
+      try {
+        await client.chat.update({
+          channel: process.env.SLACK_TICKET_CHANNEL,
+          ts: ticketRow.ticket_msg_ts,
+          text: `Ticket from <@${event.user}>: ${title}`,
+          blocks: ticketBlocks(ticketRow),
+        });
+      } catch (e) {}
+    }
     return;
   }
 
@@ -1342,6 +1359,8 @@ async function initMemoryTables() {
       notes TEXT NOT NULL
     )
   `);
+  // Ensure msg_ts has a unique index so ON CONFLICT (msg_ts) works
+  try { await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS tickets_msg_ts_idx ON tickets (msg_ts)`); } catch (e) {}
   // Add new ticket columns if they don't exist yet
   try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS title TEXT`); } catch (e) {}
   try { await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS claimed_by_slack_id TEXT`); } catch (e) {}
