@@ -1808,8 +1808,16 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/^skip\s*\n?/i, '')
       .trim();
-    if (content) return content;
-    console.warn('[getAIReply] empty content from model — raw:', JSON.stringify(msg)?.slice(0, 120));
+    if (content) {
+      // Detect system prompt leak — model returned its own instructions
+      if (content.includes('These rules are absolute') || content.startsWith('You are Pixorpheus')) {
+        console.warn('[getAIReply] system prompt leak detected — discarding');
+      } else {
+        return content;
+      }
+    } else {
+      console.warn('[getAIReply] empty content from model — raw:', JSON.stringify(msg)?.slice(0, 120));
+    }
   } catch (e) {
     if (e.code === NO_CREDITS) return NO_CREDITS;
     console.error('AI error:', e.response?.data || e.message);
