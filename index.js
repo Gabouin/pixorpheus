@@ -7,13 +7,14 @@ require("dotenv").config();
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
-const HC_AI_URL = 'https://ai.hackclub.com/chat/completions';
+const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 
 async function aiCall(body) {
   const key = process.env.HACKCLUB_AI_KEY;
   if (!key) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
+  const hcBody = { ...body, model: process.env.HC_AI_MODEL || 'anthropic/claude-sonnet-5' };
   try {
-    const res = await axios.post(HC_AI_URL, body, {
+    const res = await axios.post(HC_AI_URL, hcBody, {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       timeout: 20000,
     });

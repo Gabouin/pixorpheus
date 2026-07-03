@@ -4,7 +4,9 @@
       "Bash(node --check /Users/gabin/Desktop/pixorpheus/index.js)",
       "Bash(git fetch *)",
       "Bash(gh pr *)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:docs.ai.hackclub.com)",
+      "WebFetch(domain:ai.hackclub.com)"
     ]
   }
 }
