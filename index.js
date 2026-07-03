@@ -1809,9 +1809,14 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
       .replace(/^skip\s*\n?/i, '')
       .trim();
     if (content) {
-      // Detect system prompt leak — model returned its own instructions
-      if (content.includes('These rules are absolute') || content.startsWith('You are Pixorpheus')) {
-        console.warn('[getAIReply] system prompt leak detected — discarding');
+      // Detect system prompt leak or internal reasoning bleed-through
+      const isLeak =
+        content.includes('These rules are absolute') ||
+        content.startsWith('You are Pixorpheus') ||
+        /^(the user is asking|let me check|my last reply|the conversation (is|seems|was)|i need to|i should (not|avoid)|looking at the context)/i.test(content) ||
+        /^\d+\.\s/m.test(content.slice(0, 80));  // starts with numbered list = reasoning
+      if (isLeak) {
+        console.warn('[getAIReply] reasoning/prompt leak detected — discarding:', content.slice(0, 60));
       } else {
         return content;
       }
