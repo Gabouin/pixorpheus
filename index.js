@@ -6,6 +6,7 @@ require("dotenv").config();
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
+const RATE_LIMITED = '__RATE_LIMITED__';
 
 const HC_AI_URL = 'https://ai.hackclub.com/proxy/v1/chat/completions';
 
@@ -21,8 +22,12 @@ async function aiCall(body) {
     console.log('[hc-ai] ok — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
     return res;
   } catch (e) {
-    if (e.response?.status === 402 || e.response?.status === 429) {
-      console.error('[hc-ai] no credits/rate limit (', e.response?.status, ')');
+    if (e.response?.status === 429) {
+      console.warn('[hc-ai] rate limited (429) — staying silent');
+      const err = new Error('rate limited'); err.code = RATE_LIMITED; throw err;
+    }
+    if (e.response?.status === 402) {
+      console.error('[hc-ai] no credits (402)');
       const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
     }
     console.error('[hc-ai] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message);
@@ -1787,9 +1792,10 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
     }
   } catch (e) {
     if (e.code === NO_CREDITS) return NO_CREDITS;
+    if (e.code === RATE_LIMITED) return null;
     console.error('AI error:', e.response?.data || e.message);
   }
-  return shortFallbacks[Math.floor(Math.random() * shortFallbacks.length)];
+  return null;
 }
 
 let botUserId, botAppId;
