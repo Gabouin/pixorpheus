@@ -7,69 +7,30 @@ require("dotenv").config();
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 
-async function aiClassify(body) {
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (!openrouterKey) throw new Error('no key');
+const HC_AI_URL = 'https://ai.hackclub.com/chat/completions';
+
+async function aiCall(body) {
+  const key = process.env.HACKCLUB_AI_KEY;
+  if (!key) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
   try {
-    const res = await axios.post(OPENROUTER_URL, { ...body, model: 'meta-llama/llama-3.3-70b-instruct:free' }, {
-      headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
-      timeout: 10000,
+    const res = await axios.post(HC_AI_URL, body, {
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      timeout: 20000,
     });
+    console.log('[hc-ai] ok — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
     return res;
   } catch (e) {
-    throw e;
+    if (e.response?.status === 402 || e.response?.status === 429) {
+      console.error('[hc-ai] no credits/rate limit (', e.response?.status, ')');
+      const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
+    }
+    console.error('[hc-ai] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message);
+    const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
   }
 }
 
-async function aiPost(body) {
-  const ZEN_KEY = process.env.OPENCODE_ZEN_KEY;
-  if (ZEN_KEY) {
-    const ZEN_URL = process.env.OPENCODE_ZEN_URL || 'https://opencode.ai/zen/v1/chat/completions';
-    const zenBody = { ...body, model: process.env.ZEN_MODEL || 'opencode/deepseek-v4-flash-free' };
-    try {
-      const res = await axios.post(ZEN_URL, zenBody, {
-        headers: { Authorization: `Bearer ${ZEN_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
-      });
-      const content = res.data?.choices?.[0]?.message?.content;
-      const reasoning = res.data?.choices?.[0]?.message?.reasoning_content || res.data?.choices?.[0]?.message?.reasoning;
-      console.log('[zen] ok — content:', JSON.stringify(content)?.slice(0, 80), '| reasoning:', !!reasoning);
-      if (!content && reasoning) {
-        console.warn('[zen] content empty but reasoning present — model is reasoning-only, falling back to OpenRouter');
-      } else {
-        return res;
-      }
-    } catch (e) {
-      if (e.response?.status === 402) {
-        console.error('[zen] no credits (402)');
-        const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
-      }
-      console.error('[zen] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message, '— falling back to OpenRouter');
-    }
-  }
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (!openrouterKey) { const err = new Error('no credits'); err.code = NO_CREDITS; throw err; }
-  const OR_MODELS = [
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'meta-llama/llama-3.1-8b-instruct:free',
-    'qwen/qwen3-8b:free',
-  ];
-  for (const model of OR_MODELS) {
-    try {
-      const orBody = { ...body, model };
-      const res = await axios.post(OPENROUTER_URL, orBody, {
-        headers: { Authorization: `Bearer ${openrouterKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pixorpheus.app', 'X-Title': 'Pixorpheus' },
-        timeout: 25000,
-      });
-      console.log('[openrouter] ok (' + model + ') — content:', JSON.stringify(res.data?.choices?.[0]?.message?.content)?.slice(0, 80));
-      return res;
-    } catch (e) {
-      console.warn('[openrouter] ' + model + ' failed (status ' + e.response?.status + ') — trying next');
-    }
-  }
-  console.error('[openrouter] all models failed');
-  const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
-}
+const aiPost = aiCall;
+const aiClassify = aiCall;
 
 const { App } = require("@slack/bolt");
 const Anthropic = require("@anthropic-ai/sdk");
