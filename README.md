@@ -307,8 +307,22 @@ Login via Slack OAuth - only helpers (in the `helpers` DB table) and admins (`SL
 | **Thread view** | Read the full Slack thread inline |
 | **Reply** | Post a reply to any ticket thread (appears in Slack under your name) |
 | **Resolve** | Mark a ticket as resolved directly from the dashboard |
+| **Moderation DM** | Trigger a ban or warning DM from Pixorpheus to a Slack user |
 
 The dashboard talks to the same PostgreSQL DB as the bot. Resolving from the dashboard posts a message in the Slack thread and updates the ticket channel message.
+
+### Moderation DM
+
+`POST /api/moderate/dm` (requires being logged in as a helper or admin, same as every other `/api/*` route) sends a DM from Pixorpheus to a given user.
+
+```
+POST /api/moderate/dm
+Content-Type: application/json
+
+{ "slackUserId": "U0123456789", "action": "ban" | "warning" }
+```
+
+Message wording lives in the `MODERATION_MESSAGES` object at the top of `dashboard.js`. There's no separate secret to configure, `requireAuth` already gates this behind the existing Slack OAuth session, same as the rest of the dashboard's API.
 
 ---
 
