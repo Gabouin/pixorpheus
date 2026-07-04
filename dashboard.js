@@ -122,6 +122,24 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json(req.session.user);
 });
 
+const MODERATION_MESSAGES = {
+  ban: "You've been banned from Pixl. If you think this is a mistake, reach out to a mod in #pixl-help.",
+  warning: "This is a warning from Pixl moderation. Please review the Hack Club code of conduct (hackclub.com/conduct). Repeated issues can lead to a ban.",
+};
+
+app.post('/api/moderate/dm', requireAuth, async (req, res) => {
+  const { slackUserId, action } = req.body;
+  if (!slackUserId) return res.status(400).json({ error: 'Missing slackUserId' });
+  if (action !== 'ban' && action !== 'warning') return res.status(400).json({ error: 'Invalid action' });
+
+  try {
+    await slack.chat.postMessage({ channel: slackUserId, text: MODERATION_MESSAGES[action] });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     res.json(await getSlackUser(req.params.id));
