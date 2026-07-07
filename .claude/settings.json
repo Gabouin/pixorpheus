@@ -6,7 +6,14 @@
       "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const arr=JSON.parse\\(d\\); if\\(arr.length\\){console.log\\('KEYS:', Object.keys\\(arr[0]\\)\\); console.log\\('FIRST ENTRY:', JSON.stringify\\(arr[0], null, 2\\)\\);} else { console.log\\('empty array'\\); }\")",
       "Bash(node -e ' *)",
       "Bash(node --check /Users/gabin/Desktop/pixorpheus/dashboard.js)",
-      "mcp__claude_ai_Slack__slack_search_channels"
+      "mcp__claude_ai_Slack__slack_search_channels",
+      "Bash(curl -s https://registry.npmjs.org/@slack/bolt/4.7.3)",
+      "Bash(curl -s https://registry.npmjs.org/@slack/bolt/-/bolt-4.7.3.tgz)",
+      "Bash(tar -tz)",
+      "Bash(tar -xz -O package/dist/receivers/ExpressReceiver.js)",
+      "Bash(git -C /Users/gabin/Desktop/pixorpheus status)",
+      "Bash(git -C /Users/gabin/Desktop/pixorpheus diff HEAD -- index.js)",
+      "Bash(git -C /Users/gabin/Desktop/pixorpheus log --oneline -5)"
     ]
   }
 }
