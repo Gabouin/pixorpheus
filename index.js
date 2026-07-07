@@ -2419,7 +2419,7 @@ async function handleGitHubEvent(event, payload) {
     const more = payload.commits.length > 3 ? `\n_...and ${payload.commits.length - 3} more_` : '';
     await app.client.chat.postMessage({
       channel,
-      text: `🚀 *${payload.pusher.name}* pushed ${payload.commits.length} commit${payload.commits.length > 1 ? 's' : ''} to \`main\` on *${repo}*\n${commits}${more}`,
+      text: `*${payload.pusher.name}* pushed ${payload.commits.length} commit${payload.commits.length > 1 ? 's' : ''} to \`main\` on *${repo}*\n${commits}${more}`,
     });
   }
 
@@ -2428,7 +2428,7 @@ async function handleGitHubEvent(event, payload) {
     const pr = payload.pull_request;
     await app.client.chat.postMessage({
       channel,
-      text: `🔀 *${pr.user.login}* merged PR #${pr.number} *"${pr.title}"* into \`main\` on *${repo}*`,
+      text: `*${pr.user.login}* merged PR #${pr.number} *"${pr.title}"* into \`main\` on *${repo}*`,
     });
   }
 }
