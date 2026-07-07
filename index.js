@@ -2433,7 +2433,7 @@ async function handleGitHubEvent(event, payload) {
   }
 }
 
-receiver.router.post('/webhooks/github', express.raw({ type: 'application/json' }), (req, res) => {
+receiver.app.post('/webhooks/github', express.raw({ type: 'application/json' }), (req, res) => {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
   if (secret) {
     const sig = req.headers['x-hub-signature-256'];

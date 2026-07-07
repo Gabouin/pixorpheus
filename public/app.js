@@ -55,8 +55,8 @@ function fmtSlack(t) {
   return esc(t)
     .replace(/\*(.+?)\*/g, "<strong>$1</strong>")
     .replace(/_(.+?)_/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, '<code style="background:#1a1a1a;padding:1px 4px;border-radius:2px;font-size:.85em">$1</code>')
-    .replace(/&lt;@([A-Z0-9]+)(?:\|[^&]+)?&gt;/g, '<span style="color:#7eb6ff">@$1</span>')
+    .replace(/`(.+?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:.85em;color:#111">$1</code>')
+    .replace(/&lt;@([A-Z0-9]+)(?:\|[^&]+)?&gt;/g, '<span style="color:#555;font-weight:600">@$1</span>')
     .replace(/\n/g, "<br>");
 }
 
@@ -122,9 +122,9 @@ async function loadChart() {
         {
           label: "Created",
           data: mapByDay(d.created),
-          borderColor: "#d4a017",
-          backgroundColor: "rgba(212,160,23,.12)",
-          borderWidth: 2,
+          borderColor: "#111",
+          backgroundColor: "rgba(0,0,0,.04)",
+          borderWidth: 1.5,
           fill: true,
           tension: 0.35,
           pointRadius: 0,
@@ -132,9 +132,9 @@ async function loadChart() {
         {
           label: "Resolved",
           data: mapByDay(d.resolved),
-          borderColor: "#0bc997",
-          backgroundColor: "rgba(11,201,151,.1)",
-          borderWidth: 2,
+          borderColor: "#aaa",
+          backgroundColor: "rgba(0,0,0,.02)",
+          borderWidth: 1.5,
           fill: true,
           tension: 0.35,
           pointRadius: 0,
@@ -146,24 +146,24 @@ async function loadChart() {
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
-          labels: { color: "#666", font: { size: 11 }, boxWidth: 24, boxHeight: 2, usePointStyle: false },
+          labels: { color: "#aaa", font: { size: 11 }, boxWidth: 24, boxHeight: 2, usePointStyle: false },
         },
         tooltip: {
-          backgroundColor: "#111",
-          borderColor: "#222",
+          backgroundColor: "#fff",
+          borderColor: "#e5e5e5",
           borderWidth: 1,
-          titleColor: "#888",
-          bodyColor: "#ccc",
+          titleColor: "#aaa",
+          bodyColor: "#111",
         },
       },
       scales: {
         x: {
-          grid: { color: "rgba(255,255,255,.04)" },
-          ticks: { color: "#444", font: { size: 10 }, maxTicksLimit: 10 },
+          grid: { color: "rgba(0,0,0,.04)" },
+          ticks: { color: "#ccc", font: { size: 10 }, maxTicksLimit: 10 },
         },
         y: {
-          grid: { color: "rgba(255,255,255,.04)" },
-          ticks: { color: "#444", font: { size: 10 } },
+          grid: { color: "rgba(0,0,0,.04)" },
+          ticks: { color: "#ccc", font: { size: 10 } },
           beginAtZero: true,
         },
       },
