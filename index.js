@@ -4,7 +4,6 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const NO_CREDITS = '__NO_CREDITS__';
 const RATE_LIMITED = '__RATE_LIMITED__';
 
@@ -90,7 +89,6 @@ async function checkFAQAndSimilar(event, client) {
     }).join('\n');
 
     const res = await aiPost({
-      model: 'deepseek/deepseek-v4-pro',
       messages: [
         {
           role: 'system',
@@ -929,7 +927,6 @@ app.command("/pixl-urban", async ({ command, ack, respond }) => {
     }).join('\n');
 
     const aiRes = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
         messages: [
           {
             role: 'system',
@@ -1208,7 +1205,6 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
 
 // React with :pixl-delete: on any Pixo message to delete it
 app.event('reaction_added', async ({ event, client }) => {
-  console.log('reaction_added:', event.reaction, 'on', event.item.type);
   if (event.reaction !== 'pixl-delete') return;
   if (event.item.type !== 'message') return;
 
@@ -1221,7 +1217,6 @@ app.event('reaction_added', async ({ event, client }) => {
       inclusive: true,
     });
     const msg = result.messages?.[0];
-    console.log('pixl-delete: msg found?', !!msg, 'bot_id:', msg?.bot_id, 'botAppId:', botAppId, 'user:', msg?.user, 'botUserId:', botUserId);
     if (!msg) return;
 
     const isPixoMsg = msg.bot_id === botAppId || msg.user === botUserId || !!msg.bot_id;
@@ -1231,7 +1226,6 @@ app.event('reaction_added', async ({ event, client }) => {
       channel: event.item.channel,
       ts: event.item.ts,
     });
-    console.log('pixl-delete: deleted', event.item.ts);
   } catch (e) { console.error('pixl-delete error:', e.message); }
 });
 
@@ -1256,7 +1250,7 @@ app.event('member_joined_channel', async ({ event, client }) => {
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: posted.ts,
-      text: `cc <@${GABIN_ID}> <@${RIDIT_ID}> <@U0A1VPETCR3>`,
+      text: `cc <@${GABIN_ID}> <@${RIDIT_ID}> <@U0A1VPETCR3> <@U0A20HRP4KB>`,
     });
   } catch (e) {
     console.error('welcome error:', e.message);
@@ -1265,8 +1259,6 @@ app.event('member_joined_channel', async ({ event, client }) => {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const dmHistory = new Map();
-
-const shortFallbacks = ['k', 'hm', 'yeah', '?', 'lol ok', 'sure', 'mm'];
 
 const userMemory = new Map();
 const personalityMemory = new Map();
@@ -1364,7 +1356,6 @@ async function extractStyle(messages) {
   const combined = messages.join('\n');
   try {
     const res = await aiPost({
-      model: 'moonshotai/kimi-k2.6',
       messages: [
         {
           role: 'system',
@@ -1483,7 +1474,6 @@ async function maybeUpdateThreadSummary(threadKey) {
   tm.recentMsgs = [];
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: 'Summarize this chat in 1-2 sentences. Just the topic/gist, no intro.' },
           { role: 'user', content: msgs },
@@ -1563,7 +1553,6 @@ async function extractMemory(userId, messages) {
   if (combined.length < 10) return;
   try {
     const res = await aiPost({
-        model: 'anthropic/claude-sonnet-4.5',
         messages: [
           { role: 'system', content: `Extract up to 10 memorable facts about THE AUTHOR of these messages. Be specific and precise. Capture:
 - Identity: name, age, location, nationality, pronouns
@@ -1605,7 +1594,6 @@ async function extractPersonality(userId, messages) {
   if (combined.length < 20) return;
   try {
     const res = await aiPost({
-        model: 'deepseek/deepseek-v4-pro',
         messages: [
           { role: 'system', content: `Analyze HOW this person communicates, not just what they say. Extract up to 5 stable personality traits. Focus on:
 - Communication style (blunt, verbose, passive-aggressive, enthusiastic...)
@@ -1697,7 +1685,6 @@ When in doubt between DIRECT and CHIME, pick DIRECT. When in doubt between CHIME
 }
 
 async function getAIReply(history, userId = null, threadCtx = null, chimeMode = false, searchResults = null) {
-  const facts = userId && parseFacts(userMemory.get(userId));
   const creatorLine = userId === GABIN_ID ? `\nYou are talking to Gabin, your creator. You know it's really him. You can still be sarcastic but acknowledge he built you — maybe give him a tiny bit more respect, or roast him for the things he made you do.` : '';
   let threadLine = '';
   if (threadCtx) {
@@ -1725,7 +1712,7 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 11. If there's nothing new to add, say nothing — reply with just the word SKIP.
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
 14. CHANNELS YOU KNOW: C0B8F1BBCMU is #gabin-n-out (Gabin's private channel). C0B5P4N0WHH is the main Pixl program channel (#pixl). C0B6STY9G5N is the Pixl program help channel.
-15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin and Ridit, currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world. Randomly (1-2x per conversation), drop a casual mention of #pixl or encourage people to ship something — keep it natural, never forced. Something like "btw have you shipped anything in #pixl yet" or "go post that in #pixl fr".
+15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin, Ridit, and Ricky (<@U0A1VPETCR3>), currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world. Randomly (1-2x per conversation), drop a casual mention of #pixl or encourage people to ship something — keep it natural, never forced. Something like "btw have you shipped anything in #pixl yet" or "go post that in #pixl fr".
 13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}
 16. CUSTOM EMOJIS — you have these Slack custom emojis available. Use them IN YOUR TEXT MESSAGES occasionally — only when one genuinely fits, max 1 per reply, and not every reply. Write them as :emoji_name: inline. Meanings: :wiltedrose: sad/withered, :yay: excited/happy, :loll: laughing hard, :sad-pf: sad face, :skulk: sneaky lurking, :noooovanish: disappearing/poof, :angy: angry, :yesyes: emphatic yes, :blobhaj_party: party/hype, :shocked: shocked, :upvote: agree/upvote, :lets-fucking-gooo: MAX HYPE, :stuck_out_tongue_closed_eyes: playful teasing, :huh3d: confused/what, :thumbs-up: approve, :3c: cute/kawaii, :byee: bye, :hii: hello, :nono: no/stop, :hehehe: sneaky laugh, :awww: cute/sweet, :alibaba-admire: impressed, :alibaba-grin: big grin, :cryign: crying, :heavysob: heavy sobbing, :brokenheart: heartbreak, :nyan: fun/rainbow, :cat-gun: wtf/chaotic, :isob: sobbing, :sob-pray: desperate sob, :agadance: dancing, :cat-woah: woah!, :cat-heart: love/cute, :communist: ironic/Big Brother energy, :eyes_wtf: WTF, :eyes_shaking: nervous/shocked, :eyes-out-of-head: mind blown, :orpheus-love: orpheus love, :orpheus-baguette: french/baguette, :orphanage: orpheus ref, :orpheus-explode: explosion/mind blown, :hyper-dino-wave: excited wave, :pepedyingoflaughter: DYING of laughter, :pet-gabin: petting Gabin (use when Gabin says something cute/dumb), :pet-ridit: petting Ridit, :pet-maxx: petting Maxx, :yapa: nothing/nope (French), :yay-gay: gay celebration, :wagay: gay wave, :gay-flag: pride, :bhjflag_gay: pride flag, :spinny_cat_gay: spinning pride cat, :1984: Big Brother/surveillance irony.
 REACT RULE: if you want to REACT to the message that triggered your reply (add an emoji reaction to it), add exactly this on a NEW LINE at the VERY END of your response: REACT: :emoji_name: — one emoji from the list above, only when it genuinely fits. Omit the REACT line completely if nothing fits. Never explain the reaction.`;
@@ -1762,7 +1749,6 @@ REACT RULE: if you want to REACT to the message that triggered your reply (add a
 
   try {
     const res = await aiPost({
-        model: 'anthropic/claude-sonnet-4-5',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messagesWithMemory,
@@ -1898,7 +1884,6 @@ app.message(async ({ message, client }) => {
         const combined = msgs.map(m => `${getDisplayName(m.user) || m.user || 'someone'}: ${m.text}`).join('\n');
 
         const res = await aiPost({
-          model: 'deepseek/deepseek-v4-pro',
           messages: [
             { role: 'system', content: 'Summarize this Slack conversation concisely in 3-5 bullet points. Focus on key topics, decisions, and anything actionable. English only. No intro sentence, just the bullets.' },
             { role: 'user', content: combined.slice(0, 6000) },
@@ -2182,7 +2167,6 @@ app.command("/pixl-ask", async ({ command, ack, client }) => {
   if (!question) { await client.chat.postEphemeral({ channel: command.channel_id, user: command.user_id, text: "Usage: `/pixl-ask what is the meaning of life`" }); return; }
   try {
     const res = await aiPost({
-      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: 'You are Pixorpheus, a sarcastic Slack bot. Answer in 1-2 sentences max, lowercase, gen Z energy.' },
         { role: 'user', content: question },
@@ -2260,7 +2244,6 @@ app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
   const isSelf = targetId === command.user_id;
 
   const list = parseFacts(userMemory.get(targetId));
-  const rawTraits = personalityMemory.get(targetId);
   const traitList = parseFacts(personalityMemory.get(targetId));
   const cleanFacts = list.filter(f => !GARBAGE_PATTERNS.some(p => p.test(f)));
 
@@ -2278,7 +2261,6 @@ app.command("/pixl-mymemory", async ({ command, ack, respond, client }) => {
     ].filter(Boolean).join('\n');
 
     const res = await aiPost({
-      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: isSelf
           ? `You are Pixorpheus, a sarcastic Slack bot. The person asking is the subject — speak DIRECTLY to them using "you". Write 1-2 casual sentences summarizing what you know about them. Lowercase, conversational, gen Z energy. No lists. Only mention real concrete things — skip anything vague.`
@@ -2358,7 +2340,6 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
   await ack();
   try {
     const res = await aiPost({
-      model: 'deepseek/deepseek-v4-pro',
       messages: [
         { role: 'system', content: 'Give one genuinely surprising or weird fact. 1 sentence, lowercase, no intro like "did you know". Just the fact.' },
         { role: 'user', content: 'give me a fact' },
