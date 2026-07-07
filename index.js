@@ -2,6 +2,8 @@
 const Jimp = require("jimp");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const express = require("express");
 require("dotenv").config();
 
 const NO_CREDITS = '__NO_CREDITS__';
@@ -37,15 +39,17 @@ async function aiCall(body) {
 const aiPost = aiCall;
 const aiClassify = aiCall;
 
-const { App } = require("@slack/bolt");
+const { App, ExpressReceiver } = require("@slack/bolt");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Pool } = require("pg");
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  receiver,
 });
 
 app.event('message', async ({ event, client }) => {
@@ -1713,9 +1717,10 @@ async function getAIReply(history, userId = null, threadCtx = null, chimeMode = 
 12. Current date: ${new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}. Never say it's 2024 — that's wrong.
 14. CHANNELS YOU KNOW: C0B8F1BBCMU is #gabin-n-out (Gabin's private channel). C0B5P4N0WHH is the main Pixl program channel (#pixl). C0B6STY9G5N is the Pixl program help channel.
 15. PIXL PROGRAM: Pixl is a pixel-themed YSWS (you ship we ship) created by Gabin, Ridit, and Ricky (<@U0A1VPETCR3>), currently seeking Hack Club sponsorship to become real. It's a retro 2D open world where you level up by building real projects. You explore regions (cyberpunk city, underwater, gambling...), do sidequests (make apps, websites, hardware for in-game characters), build projects in your village and sell to merchants. You earn Pixels (in-game currency) to buy items, unlock funding, and access better regions. The more you ship, the more you earn. When anyone asks about Pixl or mentions it, go full hype mode — you're genuinely excited about it, you believe in it, talk about it like it's the coolest thing happening. You're Pixorpheus, you're literally part of this world. Randomly (1-2x per conversation), drop a casual mention of #pixl or encourage people to ship something — keep it natural, never forced. Something like "btw have you shipped anything in #pixl yet" or "go post that in #pixl fr".
-13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}
+13. ABOUT YOURSELF — know this and own it: you are Pixorpheus, a Slack bot built by Gabin. People call you "pixo" or "pix" as a nickname — that's you, own it, never act confused or pretend it's someone else. You can pixelate images (send one and ask). You remember things about people automatically over time. You can search the web. You know slash commands exist: /pixl-remember (saves a server fact), /pixl-joke (tells a joke), /pixl-stats (your usage stats), /pixl-memory (shows what you know about someone). You live in threads and channels. You sometimes jump in uninvited when you feel like it. You can be silenced with PIXOSTOP and brought back with PIXOSTART. When asked about yourself, answer confidently — never say you don't know what you can do.${botUserId ? `\nYour own Slack user ID is <@${botUserId}>. When someone mentions this, they're talking to you.` : ''}${creatorLine}${threadLine}${chimeLine}
 16. CUSTOM EMOJIS — you have these Slack custom emojis available. Use them IN YOUR TEXT MESSAGES occasionally — only when one genuinely fits, max 1 per reply, and not every reply. Write them as :emoji_name: inline. Meanings: :wiltedrose: sad/withered, :yay: excited/happy, :loll: laughing hard, :sad-pf: sad face, :skulk: sneaky lurking, :noooovanish: disappearing/poof, :angy: angry, :yesyes: emphatic yes, :blobhaj_party: party/hype, :shocked: shocked, :upvote: agree/upvote, :lets-fucking-gooo: MAX HYPE, :stuck_out_tongue_closed_eyes: playful teasing, :huh3d: confused/what, :thumbs-up: approve, :3c: cute/kawaii, :byee: bye, :hii: hello, :nono: no/stop, :hehehe: sneaky laugh, :awww: cute/sweet, :alibaba-admire: impressed, :alibaba-grin: big grin, :cryign: crying, :heavysob: heavy sobbing, :brokenheart: heartbreak, :nyan: fun/rainbow, :cat-gun: wtf/chaotic, :isob: sobbing, :sob-pray: desperate sob, :agadance: dancing, :cat-woah: woah!, :cat-heart: love/cute, :communist: ironic/Big Brother energy, :eyes_wtf: WTF, :eyes_shaking: nervous/shocked, :eyes-out-of-head: mind blown, :orpheus-love: orpheus love, :orpheus-baguette: french/baguette, :orphanage: orpheus ref, :orpheus-explode: explosion/mind blown, :hyper-dino-wave: excited wave, :pepedyingoflaughter: DYING of laughter, :pet-gabin: petting Gabin (use when Gabin says something cute/dumb), :pet-ridit: petting Ridit, :pet-maxx: petting Maxx, :yapa: nothing/nope (French), :yay-gay: gay celebration, :wagay: gay wave, :gay-flag: pride, :bhjflag_gay: pride flag, :spinny_cat_gay: spinning pride cat, :1984: Big Brother/surveillance irony.
-REACT RULE: if you want to REACT to the message that triggered your reply (add an emoji reaction to it), add exactly this on a NEW LINE at the VERY END of your response: REACT: :emoji_name: — one emoji from the list above, only when it genuinely fits. Omit the REACT line completely if nothing fits. Never explain the reaction.`;
+REACT RULE: if you want to REACT to the message that triggered your reply (add an emoji reaction to it), add exactly this on a NEW LINE at the VERY END of your response: REACT: :emoji_name: — one emoji from the list above, only when it genuinely fits. Omit the REACT line completely if nothing fits. Never explain the reaction.
+FINAL LENGTH CHECK: before sending, ask yourself — is this shorter than 2 sentences? if not, cut it. default to 2-5 words. a reaction, a roast, a quick take. nothing more unless explicitly asked for details.`;
 
   // Only include the current user's facts (full) + other users mentioned in history (brief)
   const mentionedUids = new Set();
@@ -1804,6 +1809,7 @@ app.message(async ({ message, client }) => {
   const mentionsBot = lowerText.includes('pixorpheus') || lowerText.includes('pixo') ||
                       lowerText.includes(' pix ') || lowerText.startsWith('pix ') ||
                       (botUserId && text.includes(`<@${botUserId}>`));
+  const isPixlQuestion = !message.thread_ts && /\b(what'?s|what is|c'est quoi|explain|tell me about|keskon|kézako)\b.{0,40}\bpixl\b|\bpixl\b.{0,40}\b(what|c'est quoi|explain)\b/i.test(text);
   const threadKey = message.thread_ts || message.ts;
   const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
   const inActiveThread = lastActive && (Date.now() - lastActive < THREAD_TTL);
@@ -1945,7 +1951,7 @@ app.message(async ({ message, client }) => {
     return;
   }
 
-  if (!isDM && !mentionsBot && !inActiveThread) return;
+  if (!isDM && !mentionsBot && !inActiveThread && !isPixlQuestion) return;
 
   const trimmedText = text.trim().toUpperCase();
 
@@ -2053,7 +2059,7 @@ app.message(async ({ message, client }) => {
   pending.messages.push(text);
   pending.userId = message.user;
   pending.lastMsgTs = message.ts;
-  if (mentionsBot) pending.isMention = true;
+  if (mentionsBot || isPixlQuestion) pending.isMention = true;
   clearTimeout(pending.timer);
 
   if (!mentionsBot && !isDM && inActiveThread) {
@@ -2352,41 +2358,35 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
 });
 
 
-// /pixl-lastship [github_username] — show the last ship of a user (or yourself)
 app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await ack();
 
-  let githubUsername = command.text?.trim().replace(/^@/, '');
-
-  if (!githubUsername) {
-    const parsed = parseFacts(userMemory.get(command.user_id));
-    const githubFact = parsed.find(f => /github/i.test(f));
-    if (githubFact) {
-      const match = githubFact.match(/[:\s]+([A-Za-z0-9_-]+)\s*$/);
-      if (match) githubUsername = match[1];
-    }
-  }
-
-  if (!githubUsername) {
-    await client.chat.postEphemeral({
-      channel: command.channel_id,
-      user: command.user_id,
-      text: "i don't know your github username — use `/pixl-lastship your_github_username`",
-    });
-    return;
-  }
+  const raw = command.text?.trim() || '';
+  const slackMention = raw.match(/^<@([A-Z0-9]+)>/);
+  const githubArg = slackMention ? null : raw.replace(/^@/, '') || null;
+  const lookupSlackId = slackMention ? slackMention[1] : command.user_id;
 
   try {
     const res = await axios.get('https://ships.hackclub.com/api/v1/ysws_entries', { timeout: 10000 });
-    const entries = (res.data || []).filter(e =>
-      e.approved_at && e.github_username?.toLowerCase() === githubUsername.toLowerCase()
-    );
+    const all = res.data || [];
+
+    let entries;
+    let label;
+
+    if (githubArg) {
+      entries = all.filter(e => e.github_username?.toLowerCase() === githubArg.toLowerCase());
+      label = githubArg;
+    } else {
+      entries = all.filter(e => e.slack_id === lookupSlackId);
+      label = `<@${lookupSlackId}>`;
+    }
 
     if (!entries.length) {
+      const hint = githubArg ? '' : ' — or use `/pixl-lastship your_github_username` if your Slack isn\'t linked';
       await client.chat.postEphemeral({
         channel: command.channel_id,
         user: command.user_id,
-        text: `no approved ships found for *${githubUsername}* on Hackclub Ships`,
+        text: `no approved ships found for ${label}${hint}`,
       });
       return;
     }
@@ -2407,6 +2407,46 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   }
 });
 
+async function handleGitHubEvent(event, payload) {
+  const channel = process.env.GITHUB_NOTIFY_CHANNEL;
+  if (!channel) return;
+
+  if (event === 'push' && payload.ref === 'refs/heads/main' && payload.commits?.length) {
+    const repo = payload.repository.full_name;
+    const commits = payload.commits.slice(0, 3)
+      .map(c => `> ${c.message.split('\n')[0]} (\`${c.id.slice(0, 7)}\`)`)
+      .join('\n');
+    const more = payload.commits.length > 3 ? `\n_...and ${payload.commits.length - 3} more_` : '';
+    await app.client.chat.postMessage({
+      channel,
+      text: `🚀 *${payload.pusher.name}* pushed ${payload.commits.length} commit${payload.commits.length > 1 ? 's' : ''} to \`main\` on *${repo}*\n${commits}${more}`,
+    });
+  }
+
+  if (event === 'pull_request' && payload.action === 'closed' && payload.pull_request?.merged && payload.pull_request.base.ref === 'main') {
+    const repo = payload.repository.full_name;
+    const pr = payload.pull_request;
+    await app.client.chat.postMessage({
+      channel,
+      text: `🔀 *${pr.user.login}* merged PR #${pr.number} *"${pr.title}"* into \`main\` on *${repo}*`,
+    });
+  }
+}
+
+receiver.router.post('/webhooks/github', express.raw({ type: 'application/json' }), (req, res) => {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (secret) {
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return res.status(401).send('Missing signature');
+    const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.body).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return res.status(401).send('Invalid signature');
+  }
+  let payload;
+  try { payload = JSON.parse(req.body); } catch { return res.status(400).send('Bad JSON'); }
+  res.status(200).send('ok');
+  handleGitHubEvent(req.headers['x-github-event'], payload).catch(e => console.error('[github-webhook]', e.message));
+});
+
 (async () => {
   await app.start(process.env.PORT || 3000);
   try {
@@ -2422,6 +2462,6 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await loadStyleMemory();
   autoCloseOldTickets().catch(() => {});
   setInterval(() => autoCloseOldTickets().catch(() => {}), 24 * 60 * 60 * 1000);
-  console.log("Pixl bot is running.");
+  console.log("pixorpheus is running.");
 })();
 

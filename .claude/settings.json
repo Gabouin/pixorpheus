@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --check /Users/gabin/Desktop/pixorpheus/index.js)"
+      "Bash(node --check /Users/gabin/Desktop/pixorpheus/index.js)",
+      "Bash(curl -s 'https://ships.hackclub.com/api/v1/ysws_entries')",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const arr=JSON.parse\\(d\\); if\\(arr.length\\){console.log\\('KEYS:', Object.keys\\(arr[0]\\)\\); console.log\\('FIRST ENTRY:', JSON.stringify\\(arr[0], null, 2\\)\\);} else { console.log\\('empty array'\\); }\")",
+      "Bash(node -e ' *)",
+      "Bash(node --check /Users/gabin/Desktop/pixorpheus/dashboard.js)",
+      "mcp__claude_ai_Slack__slack_search_channels"
     ]
   }
 }
