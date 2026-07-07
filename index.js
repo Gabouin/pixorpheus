@@ -2,6 +2,8 @@
 const Jimp = require("jimp");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const express = require("express");
 require("dotenv").config();
 
 const NO_CREDITS = '__NO_CREDITS__';
@@ -37,15 +39,17 @@ async function aiCall(body) {
 const aiPost = aiCall;
 const aiClassify = aiCall;
 
-const { App } = require("@slack/bolt");
+const { App, ExpressReceiver } = require("@slack/bolt");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Pool } = require("pg");
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
+
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  receiver,
 });
 
 app.event('message', async ({ event, client }) => {
@@ -2354,41 +2358,35 @@ app.command("/pixl-fact", async ({ command, ack, client }) => {
 });
 
 
-// /pixl-lastship [github_username] — show the last ship of a user (or yourself)
 app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await ack();
 
-  let githubUsername = command.text?.trim().replace(/^@/, '');
-
-  if (!githubUsername) {
-    const parsed = parseFacts(userMemory.get(command.user_id));
-    const githubFact = parsed.find(f => /github/i.test(f));
-    if (githubFact) {
-      const match = githubFact.match(/[:\s]+([A-Za-z0-9_-]+)\s*$/);
-      if (match) githubUsername = match[1];
-    }
-  }
-
-  if (!githubUsername) {
-    await client.chat.postEphemeral({
-      channel: command.channel_id,
-      user: command.user_id,
-      text: "i don't know your github username — use `/pixl-lastship your_github_username`",
-    });
-    return;
-  }
+  const raw = command.text?.trim() || '';
+  const slackMention = raw.match(/^<@([A-Z0-9]+)>/);
+  const githubArg = slackMention ? null : raw.replace(/^@/, '') || null;
+  const lookupSlackId = slackMention ? slackMention[1] : command.user_id;
 
   try {
     const res = await axios.get('https://ships.hackclub.com/api/v1/ysws_entries', { timeout: 10000 });
-    const entries = (res.data || []).filter(e =>
-      e.approved_at && e.github_username?.toLowerCase() === githubUsername.toLowerCase()
-    );
+    const all = res.data || [];
+
+    let entries;
+    let label;
+
+    if (githubArg) {
+      entries = all.filter(e => e.github_username?.toLowerCase() === githubArg.toLowerCase());
+      label = githubArg;
+    } else {
+      entries = all.filter(e => e.slack_id === lookupSlackId);
+      label = `<@${lookupSlackId}>`;
+    }
 
     if (!entries.length) {
+      const hint = githubArg ? '' : ' — or use `/pixl-lastship your_github_username` if your Slack isn\'t linked';
       await client.chat.postEphemeral({
         channel: command.channel_id,
         user: command.user_id,
-        text: `no approved ships found for *${githubUsername}* on Hackclub Ships`,
+        text: `no approved ships found for ${label}${hint}`,
       });
       return;
     }
@@ -2409,6 +2407,46 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   }
 });
 
+async function handleGitHubEvent(event, payload) {
+  const channel = process.env.GITHUB_NOTIFY_CHANNEL;
+  if (!channel) return;
+
+  if (event === 'push' && payload.ref === 'refs/heads/main' && payload.commits?.length) {
+    const repo = payload.repository.full_name;
+    const commits = payload.commits.slice(0, 3)
+      .map(c => `> ${c.message.split('\n')[0]} (\`${c.id.slice(0, 7)}\`)`)
+      .join('\n');
+    const more = payload.commits.length > 3 ? `\n_...and ${payload.commits.length - 3} more_` : '';
+    await app.client.chat.postMessage({
+      channel,
+      text: `🚀 *${payload.pusher.name}* pushed ${payload.commits.length} commit${payload.commits.length > 1 ? 's' : ''} to \`main\` on *${repo}*\n${commits}${more}`,
+    });
+  }
+
+  if (event === 'pull_request' && payload.action === 'closed' && payload.pull_request?.merged && payload.pull_request.base.ref === 'main') {
+    const repo = payload.repository.full_name;
+    const pr = payload.pull_request;
+    await app.client.chat.postMessage({
+      channel,
+      text: `🔀 *${pr.user.login}* merged PR #${pr.number} *"${pr.title}"* into \`main\` on *${repo}*`,
+    });
+  }
+}
+
+receiver.router.post('/webhooks/github', express.raw({ type: 'application/json' }), (req, res) => {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (secret) {
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return res.status(401).send('Missing signature');
+    const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.body).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return res.status(401).send('Invalid signature');
+  }
+  let payload;
+  try { payload = JSON.parse(req.body); } catch { return res.status(400).send('Bad JSON'); }
+  res.status(200).send('ok');
+  handleGitHubEvent(req.headers['x-github-event'], payload).catch(e => console.error('[github-webhook]', e.message));
+});
+
 (async () => {
   await app.start(process.env.PORT || 3000);
   try {
@@ -2424,6 +2462,6 @@ app.command("/pixl-lastship", async ({ command, ack, client }) => {
   await loadStyleMemory();
   autoCloseOldTickets().catch(() => {});
   setInterval(() => autoCloseOldTickets().catch(() => {}), 24 * 60 * 60 * 1000);
-  console.log("Pixl bot is running.");
+  console.log("pixorpheus is running.");
 })();
 
