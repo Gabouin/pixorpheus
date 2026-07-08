@@ -1,8 +1,40 @@
-# Pixorpheus
+<h1 align="center">
+  <br>
+  <img width="18%" alt="Pixorpheus" src="https://github.com/user-attachments/assets/REPLACE_WITH_YOUR_IMAGE" />
+  <br>
+  Pixorpheus
+  <br>
+</h1>
 
-The official Slack bot of the [Pixl](https://hackclub.slack.com/archives/C0B5P4N0WHH) YSWS program, built by Gabin. Part entertainer, part support system, part AI with too much personality.
+<h4 align="center">
+The official Slack bot of the <a href="https://hackclub.slack.com/archives/C0B5P4N0WHH">Pixl</a> YSWS program , part entertainer, part support system, part AI with too much personality.
+</h4>
 
+<div align="center">
+
+![License](https://img.shields.io/badge/License-ISC-blue.svg)
+![Platform](https://img.shields.io/badge/Platform-Slack-4A154B.svg)
+![Runtime](https://img.shields.io/badge/Node.js-18+-339933.svg)
+![Deploy](https://img.shields.io/badge/Deployed-Railway-7B2FBE.svg)
+![Hack Club](https://img.shields.io/badge/Hack%20Club-YSWS-EC3750.svg)
+
+</div>
+
+<p align="center">
+  <a href="#architecture">Architecture</a> •
+  <a href="#slash-commands">Commands</a> •
+  <a href="#ai-system">AI</a> •
+  <a href="#github-webhook">GitHub Webhook</a> •
+  <a href="#dashboard">Dashboard</a> •
+  <a href="#environment-variables">Env Vars</a> •
+  <a href="#deployment">Deployment</a>
+</p>
+
+<br>
+
+<p align="center">
 Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in threads, remembers things about everyone, roasts people on demand, and generally acts like a teenager.
+</p>
 
 ---
 
@@ -171,7 +203,7 @@ It can also react to messages with these emojis (the AI decides when it's approp
 - **New members** - posts a random welcome message when someone joins the Pixl channel (`#pixl`) and pings Gabin, Ridit, Ricky, and Alex in the thread
 - **Short replies** - the bot is trained to reply like someone actually texting: 2–8 words most of the time
 - **Pixl FAQ auto-reply** - if someone posts something like "what's pixl?" or "c'est quoi pixl" anywhere (not in a thread), Pixorpheus replies in thread with an explanation without needing to be mentioned
-- **Nickname awareness** - Pixorpheus knows "pixo" and "pix" are its nicknames and owns them — never acts confused
+- **Nickname awareness** - Pixorpheus knows "pixo" and "pix" are its nicknames and owns them , never acts confused
 
 ---
 
@@ -211,7 +243,7 @@ Pixorpheus can post a Slack message whenever you push to `main` or merge a PR in
 - **Push to main:** `gabin pushed 2 commits to 'main' on gabin/myrepo` + commit messages + short hashes
 - **PR merged to main:** `gabin merged PR #12 "Fix the thing" into 'main' on gabin/myrepo`
 
-The endpoint lives at `POST /webhooks/github` on the bot (not the dashboard). No auth required — the GitHub HMAC-SHA256 signature is verified if `GITHUB_WEBHOOK_SECRET` is set.
+The endpoint lives at `POST /webhooks/github` on the bot (not the dashboard). No auth required , the GitHub HMAC-SHA256 signature is verified if `GITHUB_WEBHOOK_SECRET` is set.
 
 ---
 
@@ -338,7 +370,7 @@ The dashboard talks to the same PostgreSQL DB as the bot. Resolving from the das
 
 ### Speak as Pixo (admin only)
 
-Click the **"Pixl Support" logo 5 times** in a row to reveal a hidden panel. From there you can send any message as Pixorpheus — pick a channel, optionally a thread TS to reply in a thread, type your message, send. No one else can see or trigger this; the backend endpoint (`POST /api/speak`) is gated behind `requireAdmin` which checks `SLACK_ADMIN_USER_IDS`.
+Click the **"Pixl Support" logo 5 times** in a row to reveal a hidden panel. From there you can send any message as Pixorpheus , pick a channel, optionally a thread TS to reply in a thread, type your message, send. No one else can see or trigger this; the backend endpoint (`POST /api/speak`) is gated behind `requireAdmin` which checks `SLACK_ADMIN_USER_IDS`.
 
 ### Moderation DM
 

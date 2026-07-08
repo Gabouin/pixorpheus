@@ -344,9 +344,14 @@ app.post('/api/speak', requireAdmin, async (req, res) => {
       text: text.trim(),
       ...(thread_ts?.trim() ? { thread_ts: thread_ts.trim() } : {}),
     });
+    let channelName = channel.trim();
+    try {
+      const info = await slack.conversations.info({ channel: channel.trim() });
+      if (info.channel?.name) channelName = '#' + info.channel.name;
+    } catch (_) {}
     await db.query(
-      `INSERT INTO speak_log (user_id, user_name, user_avatar, channel, thread_ts, text) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [req.session.user.id, req.session.user.name, req.session.user.avatar || null, channel.trim(), thread_ts?.trim() || null, text.trim()]
+      `INSERT INTO speak_log (user_id, user_name, user_avatar, channel, channel_name, thread_ts, text) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [req.session.user.id, req.session.user.name, req.session.user.avatar || null, channel.trim(), channelName, thread_ts?.trim() || null, text.trim()]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -375,11 +380,13 @@ db.query(`
     user_name TEXT,
     user_avatar TEXT,
     channel TEXT,
+    channel_name TEXT,
     thread_ts TEXT,
     text TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   )
-`).catch(e => console.error('[speak_log] table init failed:', e.message));
+`).then(() => db.query(`ALTER TABLE speak_log ADD COLUMN IF NOT EXISTS channel_name TEXT`))
+  .catch(e => console.error('[speak_log] table init failed:', e.message));
 
 app.listen(PORT, () => {
   console.log(` Dashboard running on port ${PORT}`);

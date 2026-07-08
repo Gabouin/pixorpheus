@@ -466,7 +466,7 @@ async function openSpeakLog() {
   list.innerHTML = data.map(e => {
     const d = new Date(e.created_at);
     const when = d.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
-    const where = e.thread_ts ? `${e.channel} (thread)` : e.channel;
+    const where = e.thread_ts ? `${e.channel_name} (thread)` : e.channel_name;
     return `<div style="padding:10px 20px;border-bottom:1px solid #f5f5f5;">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
         <span style="font-size:.78rem;font-weight:600;color:#111;">${esc(e.user_name || '?')}</span>
