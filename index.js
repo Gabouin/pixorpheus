@@ -1814,6 +1814,15 @@ app.message(async ({ message, client }) => {
   const lastActive = message.thread_ts && activeThreads.get(message.thread_ts);
   const inActiveThread = lastActive && (Date.now() - lastActive < THREAD_TTL);
 
+  let isBotStartedThread = false;
+  if (message.thread_ts && !inActiveThread && !mentionsBot && !isDM) {
+    try {
+      const parent = await client.conversations.replies({ channel: message.channel, ts: message.thread_ts, limit: 1 });
+      const first = parent.messages?.[0];
+      if (first && (first.bot_id === botAppId || first.user === botUserId)) isBotStartedThread = true;
+    } catch (_) {}
+  }
+
   // Training mode — intercept before the bot mention filter
   if (message.channel === TRAINING_CHANNEL && !message.bot_id) {
     const trimmedLower = text.trim().toLowerCase();
@@ -1951,7 +1960,7 @@ app.message(async ({ message, client }) => {
     return;
   }
 
-  if (!isDM && !mentionsBot && !inActiveThread && !isPixlQuestion) return;
+  if (!isDM && !mentionsBot && !inActiveThread && !isPixlQuestion && !isBotStartedThread) return;
 
   const trimmedText = text.trim().toUpperCase();
 
@@ -2059,7 +2068,7 @@ app.message(async ({ message, client }) => {
   pending.messages.push(text);
   pending.userId = message.user;
   pending.lastMsgTs = message.ts;
-  if (mentionsBot || isPixlQuestion) pending.isMention = true;
+  if (mentionsBot || isPixlQuestion || isBotStartedThread) pending.isMention = true;
   clearTimeout(pending.timer);
 
   if (!mentionsBot && !isDM && inActiveThread) {
