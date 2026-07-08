@@ -1238,7 +1238,7 @@ app.event('member_joined_channel', async ({ event, client }) => {
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: posted.ts,
-      text: `cc <@${GABIN_ID}> <@${RIDIT_ID}> <@U0A1VPETCR3> <@U0A20HRP4KB>`,
+      text: `cc <@S0BFM30573R>`,
     });
   } catch (e) {
     console.error('welcome error:', e.message);
