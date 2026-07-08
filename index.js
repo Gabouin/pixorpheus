@@ -32,7 +32,7 @@ async function aiCall(body) {
       const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
     }
     console.error('[hc-ai] failed (status', e.response?.status, '):', e.response?.data?.error?.message || e.message);
-    const err = new Error('no credits'); err.code = NO_CREDITS; throw err;
+    const err = new Error('transient error'); err.code = RATE_LIMITED; throw err;
   }
 }
 
@@ -1211,26 +1211,9 @@ app.action('delete_pixl', async ({ ack, body, client }) => {
 app.event('reaction_added', async ({ event, client }) => {
   if (event.reaction !== 'pixl-delete') return;
   if (event.item.type !== 'message') return;
-
   try {
-    const result = await client.conversations.history({
-      channel: event.item.channel,
-      latest: event.item.ts,
-      oldest: event.item.ts,
-      limit: 1,
-      inclusive: true,
-    });
-    const msg = result.messages?.[0];
-    if (!msg) return;
-
-    const isPixoMsg = msg.bot_id === botAppId || msg.user === botUserId || !!msg.bot_id;
-    if (!isPixoMsg) return;
-
-    await client.chat.delete({
-      channel: event.item.channel,
-      ts: event.item.ts,
-    });
-  } catch (e) { console.error('pixl-delete error:', e.message); }
+    await client.chat.delete({ channel: event.item.channel, ts: event.item.ts });
+  } catch (_) {}
 });
 
 const PIXL_WELCOME_MSGS = [
@@ -1251,6 +1234,7 @@ app.event('member_joined_channel', async ({ event, client }) => {
       channel: event.channel,
       text: `<@${event.user}> ${msg}`,
     });
+    welcomeThreads.add(posted.ts);
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: posted.ts,
@@ -1280,6 +1264,7 @@ let kawaiiMessages = [];
 const pendingTickets = new Map();
 const processedHelpMsgs = new Set();
 const processedMsgTs = new Set();
+const welcomeThreads = new Set();
 
 function parseFacts(raw) {
   if (Array.isArray(raw)) return raw;
@@ -1960,6 +1945,7 @@ app.message(async ({ message, client }) => {
     return;
   }
 
+  if (message.thread_ts && welcomeThreads.has(message.thread_ts) && !mentionsBot) return;
   if (!isDM && !mentionsBot && !inActiveThread && !isPixlQuestion && !isBotStartedThread) return;
 
   const trimmedText = text.trim().toUpperCase();
@@ -2422,10 +2408,10 @@ async function handleGitHubEvent(event, payload) {
 
   if (event === 'push' && payload.ref === 'refs/heads/main' && payload.commits?.length) {
     const repo = payload.repository.full_name;
-    const commits = payload.commits.slice(0, 3)
+    const commits = payload.commits
       .map(c => `> ${c.message.split('\n')[0]} (\`${c.id.slice(0, 7)}\`)`)
       .join('\n');
-    const more = payload.commits.length > 3 ? `\n_...and ${payload.commits.length - 3} more_` : '';
+    const more = '';
     await app.client.chat.postMessage({
       channel,
       text: `*${payload.pusher.name}* pushed ${payload.commits.length} commit${payload.commits.length > 1 ? 's' : ''} to \`main\` on *${repo}*\n${commits}${more}`,
