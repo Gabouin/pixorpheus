@@ -18,6 +18,7 @@ Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in th
 - [Thread Controls](#thread-controls)
 - [AI System](#ai-system)
 - [Smart FAQ](#smart-faq)
+- [GitHub Webhook](#github-webhook)
 - [Auto-Close](#auto-close)
 - [Help & Ticket System](#help--ticket-system)
 - [Style Listening System](#style-listening-system)
@@ -33,12 +34,12 @@ Pixorpheus handles the full help/ticket workflow for Pixl, talks to people in th
 
 | File | Role |
 |---|---|
-| `index.js` | Main Slack bot - all commands, events, AI, ticket system |
+| `index.js` | Main Slack bot - all commands, events, AI, ticket system, GitHub webhook receiver |
 | `dashboard.js` | Express web server - helper dashboard with Slack OAuth |
 | `public/` | Dashboard frontend (HTML/CSS/JS) |
-| `models.json` | OpenRouter model list |
+| `models.json` | Model list (legacy) |
 
-Both `index.js` and `dashboard.js` are separate processes sharing the same PostgreSQL database. The bot runs on Slack's Bolt v4 framework. The dashboard runs on Express.
+Both `index.js` and `dashboard.js` are separate processes sharing the same PostgreSQL database. The bot runs on Slack's Bolt v4 framework (`ExpressReceiver`). The dashboard runs on Express.
 
 ---
 
@@ -67,7 +68,7 @@ Both `index.js` and `dashboard.js` are separate processes sharing the same Postg
 | Command | Description |
 |---|---|
 | `/pixl [@user] [size]` | Pixelate a Slack profile picture - only works in the Pixl channels. Optional pixel size 2–64 (default 8). Reacts with `:pixl-delete:` to remove. |
-| `/pixl-lastship [github_username]` | Show the last approved Hack Club Ship for a GitHub user (defaults to yours if known) |
+| `/pixl-lastship [@user or github_username]` | Show the last approved Hack Club Ship. No argument = your own ships (matched by Slack ID). Pass `@user` to look up someone else by Slack ID. Pass a GitHub username as plain text to look up by username. |
 | `/pixl-leaderboard` | Show who Pixorpheus knows the most facts about - the most engaged members |
 
 ### Memory & Knowledge
@@ -136,10 +137,10 @@ Messages are batched for 1.5 seconds (if mentioned) or 8 seconds (if chiming) to
 
 | Use case | Model |
 |---|---|
-| Main channel replies | `claude-sonnet-4-5` via OpenRouter |
+| All AI replies and utility tasks | `anthropic/claude-sonnet-5` via Hack Club AI (`HACKCLUB_AI_KEY`) |
 | DMs | `claude-haiku-4-5` via Anthropic SDK (with web search) |
-| Utility tasks (chime decision, memory extraction, search query) | `deepseek/deepseek-v4-pro` via OpenRouter |
-| Urban Dictionary filtering | `deepseek/deepseek-v4-pro` via OpenRouter |
+
+The active model can be overridden with the `HC_AI_MODEL` env var. Rate limits (429) are handled silently. Credit exhaustion (402) posts a visible error.
 
 ### Memory System
 
@@ -167,8 +168,10 @@ It can also react to messages with these emojis (the AI decides when it's approp
 ### Special Behaviors
 
 - **Orpheus bot** - automatically replies "thx orphan" immediately whenever Orpheus posts in the same channel
-- **New members** - posts a random welcome message when someone joins the Pixl channel (`#pixl`) and pings Gabin in the thread
+- **New members** - posts a random welcome message when someone joins the Pixl channel (`#pixl`) and pings Gabin, Ridit, Ricky, and Alex in the thread
 - **Short replies** - the bot is trained to reply like someone actually texting: 2–8 words most of the time
+- **Pixl FAQ auto-reply** - if someone posts something like "what's pixl?" or "c'est quoi pixl" anywhere (not in a thread), Pixorpheus replies in thread with an explanation without needing to be mentioned
+- **Nickname awareness** - Pixorpheus knows "pixo" and "pix" are its nicknames and owns them — never acts confused
 
 ---
 
@@ -187,6 +190,28 @@ The FAQ check runs in parallel with the ticket creation flow - it never slows an
 
 - **Language:** English only (the bot reminds users to post in English if needed)
 - **Threshold:** Only high-confidence matches are surfaced - vague similarity is ignored
+
+---
+
+## GitHub Webhook
+
+Pixorpheus can post a Slack message whenever you push to `main` or merge a PR into `main` on any GitHub repo.
+
+### Setup
+
+1. Set `GITHUB_NOTIFY_CHANNEL` (Slack channel ID) and `GITHUB_WEBHOOK_SECRET` (any random string) on the bot's Railway service
+2. In each GitHub repo: **Settings → Webhooks → Add webhook**
+   - Payload URL: `https://[bot-url].railway.app/webhooks/github`
+   - Content type: `application/json`
+   - Secret: same value as `GITHUB_WEBHOOK_SECRET`
+   - Events: **Pushes** + **Pull requests**
+
+### Output
+
+- **Push to main:** `gabin pushed 2 commits to 'main' on gabin/myrepo` + commit messages + short hashes
+- **PR merged to main:** `gabin merged PR #12 "Fix the thing" into 'main' on gabin/myrepo`
+
+The endpoint lives at `POST /webhooks/github` on the bot (not the dashboard). No auth required — the GitHub HMAC-SHA256 signature is verified if `GITHUB_WEBHOOK_SECRET` is set.
 
 ---
 
@@ -311,6 +336,10 @@ Login via Slack OAuth - only helpers (in the `helpers` DB table) and admins (`SL
 
 The dashboard talks to the same PostgreSQL DB as the bot. Resolving from the dashboard posts a message in the Slack thread and updates the ticket channel message.
 
+### Speak as Pixo (admin only)
+
+Click the **"Pixl Support" logo 5 times** in a row to reveal a hidden panel. From there you can send any message as Pixorpheus — pick a channel, optionally a thread TS to reply in a thread, type your message, send. No one else can see or trigger this; the backend endpoint (`POST /api/speak`) is gated behind `requireAdmin` which checks `SLACK_ADMIN_USER_IDS`.
+
 ### Moderation DM
 
 `POST /api/moderate/dm` (requires being logged in as a helper or admin, same as every other `/api/*` route) sends a DM from Pixorpheus to a given user.
@@ -373,9 +402,12 @@ All tables are created automatically at startup via `initMemoryTables()` (except
 | `SLACK_ADMIN_USER_IDS` | Comma-separated Slack user IDs of admins (bypass helper checks) |
 | `SLACK_USER_TOKEN` | User token (`xoxp-...`) for deleting macro messages in threads |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `OPENROUTER_API_KEY` | OpenRouter API key (main AI + utility models) |
+| `HACKCLUB_AI_KEY` | Hack Club AI key (all main AI calls via `anthropic/claude-sonnet-5`) |
+| `HC_AI_MODEL` | Override the Hack Club AI model (default: `anthropic/claude-sonnet-5`) |
 | `ANTHROPIC_API_KEY` | Anthropic API key (DM replies via Haiku with web search) |
 | `BRAVE_SEARCH_KEY` | Brave Search API key (auto web search in replies) |
+| `GITHUB_NOTIFY_CHANNEL` | Slack channel ID where GitHub push/PR notifications are posted |
+| `GITHUB_WEBHOOK_SECRET` | Secret used to verify GitHub webhook signatures |
 | `PORT` | Port for the Bolt HTTP receiver (default 3000) |
 
 ### Dashboard (`dashboard.js`)

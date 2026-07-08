@@ -25,6 +25,13 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+function requireAdmin(req, res, next) {
+  if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+  const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (admins.includes(req.session.user.id)) return next();
+  return res.status(403).json({ error: 'Forbidden' });
+}
+
 async function requireAuth(req, res, next) {
   if (!req.session.user) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not authenticated' });
@@ -324,6 +331,21 @@ app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/speak', requireAdmin, async (req, res) => {
+  const { channel, text, thread_ts } = req.body;
+  if (!channel?.trim() || !text?.trim()) return res.status(400).json({ error: 'Missing fields' });
+  try {
+    await slack.chat.postMessage({
+      channel: channel.trim(),
+      text: text.trim(),
+      ...(thread_ts?.trim() ? { thread_ts: thread_ts.trim() } : {}),
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
   }
 });
 

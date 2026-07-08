@@ -434,6 +434,36 @@ function dismissReminder() {
   document.getElementById("conf-overlay").classList.remove("visible");
 }
 
+let logoClicks = 0, logoTimer = null;
+document.querySelector('.logo').addEventListener('click', () => {
+  logoClicks++;
+  clearTimeout(logoTimer);
+  logoTimer = setTimeout(() => { logoClicks = 0; }, 1200);
+  if (logoClicks >= 5) {
+    logoClicks = 0;
+    const p = document.getElementById('speak-panel');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  }
+});
+
+async function speakSend() {
+  const channel = document.getElementById('speak-channel').value.trim();
+  const text = document.getElementById('speak-text').value.trim();
+  const thread_ts = document.getElementById('speak-thread').value.trim();
+  const st = document.getElementById('speak-status');
+  if (!channel || !text) { st.textContent = 'channel + message required'; return; }
+  st.textContent = 'Sending…';
+  const res = await api('/api/speak', { method: 'POST', body: JSON.stringify({ channel, text, thread_ts }) });
+  if (res?.ok) {
+    st.textContent = 'Sent';
+    document.getElementById('speak-text').value = '';
+    document.getElementById('speak-thread').value = '';
+    setTimeout(() => { st.textContent = ''; }, 2000);
+  } else {
+    st.textContent = res?.error || 'Error';
+  }
+}
+
 loadMe();
 loadStats();
 loadChart();
