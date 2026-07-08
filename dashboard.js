@@ -25,6 +25,7 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+
 function requireAdmin(req, res, next) {
   if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
   const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -343,9 +344,22 @@ app.post('/api/speak', requireAdmin, async (req, res) => {
       text: text.trim(),
       ...(thread_ts?.trim() ? { thread_ts: thread_ts.trim() } : {}),
     });
+    await db.query(
+      `INSERT INTO speak_log (user_id, user_name, user_avatar, channel, thread_ts, text) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [req.session.user.id, req.session.user.name, req.session.user.avatar || null, channel.trim(), thread_ts?.trim() || null, text.trim()]
+    );
     res.json({ ok: true });
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/speak/log', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(`SELECT * FROM speak_log ORDER BY created_at DESC LIMIT 200`);
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -354,6 +368,19 @@ app.get('/', requireAuth, (req, res) => {
 });
 
 const PORT = process.env.DASHBOARD_PORT || 4000;
+db.query(`
+  CREATE TABLE IF NOT EXISTS speak_log (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT,
+    user_name TEXT,
+    user_avatar TEXT,
+    channel TEXT,
+    thread_ts TEXT,
+    text TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  )
+`).catch(e => console.error('[speak_log] table init failed:', e.message));
+
 app.listen(PORT, () => {
   console.log(` Dashboard running on port ${PORT}`);
 });

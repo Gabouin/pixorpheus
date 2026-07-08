@@ -3,110 +3,207 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pixl — Internal Access</title>
+  <title>Pixl Support — Sign in</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #080808;
-      color: #ccc;
+      background: #f5f5f5;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 24px;
     }
-    .card {
-      background: #0d0d0d;
-      border: 1px solid #1e1e1e;
-      border-radius: 4px;
-      padding: 48px 44px;
-      max-width: 500px;
+
+    .wrap {
       width: 100%;
+      max-width: 400px;
     }
-    .tag {
-      display: inline-block;
-      font-size: .65rem;
+
+    /* ── Brand ── */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      background: #111;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-mark svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .brand-name {
+      font-size: 0.9rem;
       font-weight: 700;
-      letter-spacing: .14em;
+      color: #111;
+      letter-spacing: -0.01em;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 36px 36px 32px;
+    }
+
+    .card-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: #7a6020;
-      border: 1px solid #3a2e10;
-      border-radius: 3px;
-      padding: 2px 8px;
+      color: #bbb;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #111;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
       margin-bottom: 20px;
     }
-    h1 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: #e0e0e0;
-      margin-bottom: 24px;
-    }
+
     .divider {
       height: 1px;
-      background: #1a1a1a;
-      margin-bottom: 24px;
+      background: #f0f0f0;
+      margin-bottom: 20px;
     }
+
     .notice {
-      font-size: .875rem;
-      line-height: 1.65;
+      font-size: 0.84rem;
+      line-height: 1.7;
       color: #888;
-      margin-bottom: 16px;
+      margin-bottom: 28px;
     }
-    .notice strong { color: #bbb; font-weight: 600; }
-    .notice:last-of-type { margin-bottom: 32px; }
-    .btn-continue {
-      display: block;
+    .notice strong {
+      color: #555;
+      font-weight: 500;
+    }
+
+    /* ── Button ── */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
       width: 100%;
       text-align: center;
       background: #111;
-      border: 1px solid #2a2a2a;
-      border-radius: 4px;
-      color: #d0d0d0;
+      border: none;
+      border-radius: 7px;
+      color: #fff;
       text-decoration: none;
-      font-size: .875rem;
+      font-size: 0.875rem;
       font-weight: 600;
       padding: 13px 20px;
-      transition: background .15s, border-color .15s, color .15s;
       cursor: pointer;
+      transition: opacity 0.15s;
+      letter-spacing: -0.01em;
     }
-    .btn-continue:hover {
-      background: #161616;
-      border-color: #444;
-      color: #fff;
+    .btn:hover { opacity: 0.82; }
+    .btn svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
     }
-    .error-msg {
-      margin-top: 16px;
-      font-size: .78rem;
-      color: #9a3333;
-      text-align: center;
+
+    /* ── Error ── */
+    .error {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: #fff5f5;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      color: #b91c1c;
       display: none;
+      line-height: 1.5;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 20px;
+      font-size: 0.72rem;
+      color: #ccc;
+      text-align: center;
+      line-height: 1.6;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="tag">Confidential</div>
-    <h1>Internal Support Dashboard</h1>
-    <div class="divider"></div>
-    <p class="notice">
-      This dashboard contains <strong>sensitive and confidential information</strong>, including private user support conversations and internal team data.
-    </p>
-    <p class="notice">
-      By continuing, you confirm that you will <strong>not share, screenshot, copy, or discuss</strong> the content of this page outside of your authorized team. Unauthorized access or disclosure may result in disciplinary action.
-    </p>
-    <a href="/auth/slack" class="btn-continue">I Understand — Sign in</a>
-    <div class="error-msg" id="error-msg"></div>
+  <div class="wrap">
+
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 16 16">
+          <rect x="2" y="2" width="5" height="5" rx="1"/>
+          <rect x="9" y="2" width="5" height="5" rx="1"/>
+          <rect x="2" y="9" width="5" height="5" rx="1"/>
+          <rect x="9" y="9" width="5" height="5" rx="1"/>
+        </svg>
+      </div>
+      <span class="brand-name">Pixl Support</span>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Internal Access</div>
+      <h1>Helper Dashboard</h1>
+      <div class="divider"></div>
+      <p class="notice">
+        This dashboard contains <strong>confidential support conversations</strong> and team data.
+        By signing in, you agree not to share, screenshot, or discuss its content outside the team.
+      </p>
+      <a href="/auth/slack" class="btn">
+        <svg viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19.7 32.6a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4h4v4z" fill="#E01E5A"/>
+          <path d="M21.7 32.6a4 4 0 0 1 4-4 4 4 0 0 1 4 4v10a4 4 0 0 1-4 4 4 4 0 0 1-4-4v-10z" fill="#E01E5A"/>
+          <path d="M25.7 19.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4 4 4 0 0 1 4 4v4h-4z" fill="#36C5F0"/>
+          <path d="M25.7 21.7a4 4 0 0 1 4 4 4 4 0 0 1-4 4H15.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4h10z" fill="#36C5F0"/>
+          <path d="M38.6 25.7a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4v-4h4z" fill="#2EB67D"/>
+          <path d="M36.6 25.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4h10a4 4 0 0 1 4 4 4 4 0 0 1-4 4h-10z" fill="#2EB67D"/>
+          <path d="M32.6 38.6a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4h4v4z" fill="#ECB22E"/>
+          <path d="M32.6 36.6a4 4 0 0 1 4-4 4 4 0 0 1 4 4v10a4 4 0 0 1-4 4 4 4 0 0 1-4-4v-10z" fill="#ECB22E"/>
+        </svg>
+        Sign in with Slack
+      </a>
+      <div class="error" id="error-msg"></div>
+    </div>
+
+    <div class="footer">
+      Access restricted to helpers and admins.<br>
+      Not a helper? DM @Gabin on Slack.
+    </div>
+
   </div>
+
   <script>
-    const p = new URLSearchParams(location.search);
-    const err = p.get('error');
+    const err = new URLSearchParams(location.search).get('error');
     if (err) {
       const el = document.getElementById('error-msg');
       el.style.display = 'block';
-      el.textContent = err === 'cancelled' ? 'Sign-in was cancelled.'
-        : err === 'access_denied' ? 'Access denied. You are not registered as a helper.'
-        : 'Authentication failed. Please try again.';
+      el.textContent =
+        err === 'cancelled'     ? 'Sign-in was cancelled.' :
+        err === 'access_denied' ? 'Access denied — you are not registered as a helper.' :
+                                  'Authentication failed. Please try again.';
     }
   </script>
 </body>

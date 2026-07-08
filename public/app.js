@@ -439,12 +439,44 @@ document.querySelector('.logo').addEventListener('click', () => {
   logoClicks++;
   clearTimeout(logoTimer);
   logoTimer = setTimeout(() => { logoClicks = 0; }, 1200);
-  if (logoClicks >= 5) {
-    logoClicks = 0;
+  if (logoClicks === 5) {
     const p = document.getElementById('speak-panel');
     p.style.display = p.style.display === 'none' ? 'block' : 'none';
   }
+  if (logoClicks >= 10) {
+    logoClicks = 0;
+    openSpeakLog();
+  }
 });
+
+async function openSpeakLog() {
+  const panel = document.getElementById('log-panel');
+  const list = document.getElementById('log-list');
+  panel.style.display = 'flex';
+  list.innerHTML = '<div style="padding:16px 20px;font-size:.78rem;color:#bbb;">Loading…</div>';
+  const data = await api('/api/speak/log');
+  if (!data || data.error) {
+    list.innerHTML = `<div style="padding:16px 20px;font-size:.78rem;color:#dc2626;">${data?.error || 'Error'}</div>`;
+    return;
+  }
+  if (!data.length) {
+    list.innerHTML = '<div style="padding:16px 20px;font-size:.78rem;color:#bbb;">No messages sent yet.</div>';
+    return;
+  }
+  list.innerHTML = data.map(e => {
+    const d = new Date(e.created_at);
+    const when = d.toLocaleDateString('en', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
+    const where = e.thread_ts ? `${e.channel} (thread)` : e.channel;
+    return `<div style="padding:10px 20px;border-bottom:1px solid #f5f5f5;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+        <span style="font-size:.78rem;font-weight:600;color:#111;">${esc(e.user_name || '?')}</span>
+        <span style="font-size:.7rem;color:#bbb;">${when}</span>
+      </div>
+      <div style="font-size:.72rem;color:#aaa;margin-bottom:4px;">→ ${esc(where)}</div>
+      <div style="font-size:.82rem;color:#444;white-space:pre-wrap;word-break:break-word;">${esc(e.text)}</div>
+    </div>`;
+  }).join('');
+}
 
 async function speakSend() {
   const channel = document.getElementById('speak-channel').value.trim();
