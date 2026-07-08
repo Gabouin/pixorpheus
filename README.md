@@ -7,7 +7,7 @@
 </h1>
 
 <h4 align="center">
-The official Slack bot of the <a href="https://hackclub.slack.com/archives/C0B5P4N0WHH">Pixl</a> YSWS program — part entertainer, part support system, part AI with too much personality.
+The official Slack bot of the <a href="https://hackclub.slack.com/archives/C0B5P4N0WHH">Pixl</a> YSWS program , part entertainer, part support system, part AI with too much personality.
 </h4>
 
 <div align="center">
@@ -203,7 +203,7 @@ It can also react to messages with these emojis (the AI decides when it's approp
 - **New members** - posts a random welcome message when someone joins the Pixl channel (`#pixl`) and pings Gabin, Ridit, Ricky, and Alex in the thread
 - **Short replies** - the bot is trained to reply like someone actually texting: 2–8 words most of the time
 - **Pixl FAQ auto-reply** - if someone posts something like "what's pixl?" or "c'est quoi pixl" anywhere (not in a thread), Pixorpheus replies in thread with an explanation without needing to be mentioned
-- **Nickname awareness** - Pixorpheus knows "pixo" and "pix" are its nicknames and owns them — never acts confused
+- **Nickname awareness** - Pixorpheus knows "pixo" and "pix" are its nicknames and owns them , never acts confused
 
 ---
 
@@ -243,7 +243,7 @@ Pixorpheus can post a Slack message whenever you push to `main` or merge a PR in
 - **Push to main:** `gabin pushed 2 commits to 'main' on gabin/myrepo` + commit messages + short hashes
 - **PR merged to main:** `gabin merged PR #12 "Fix the thing" into 'main' on gabin/myrepo`
 
-The endpoint lives at `POST /webhooks/github` on the bot (not the dashboard). No auth required — the GitHub HMAC-SHA256 signature is verified if `GITHUB_WEBHOOK_SECRET` is set.
+The endpoint lives at `POST /webhooks/github` on the bot (not the dashboard). No auth required , the GitHub HMAC-SHA256 signature is verified if `GITHUB_WEBHOOK_SECRET` is set.
 
 ---
 
@@ -370,7 +370,7 @@ The dashboard talks to the same PostgreSQL DB as the bot. Resolving from the das
 
 ### Speak as Pixo (admin only)
 
-Click the **"Pixl Support" logo 5 times** in a row to reveal a hidden panel. From there you can send any message as Pixorpheus — pick a channel, optionally a thread TS to reply in a thread, type your message, send. No one else can see or trigger this; the backend endpoint (`POST /api/speak`) is gated behind `requireAdmin` which checks `SLACK_ADMIN_USER_IDS`.
+Click the **"Pixl Support" logo 5 times** in a row to reveal a hidden panel. From there you can send any message as Pixorpheus , pick a channel, optionally a thread TS to reply in a thread, type your message, send. No one else can see or trigger this; the backend endpoint (`POST /api/speak`) is gated behind `requireAdmin` which checks `SLACK_ADMIN_USER_IDS`.
 
 ### Moderation DM
 

@@ -30,25 +30,6 @@
       gap: 10px;
       margin-bottom: 32px;
     }
-    .brand-mark {
-      width: 32px;
-      height: 32px;
-      background: #111;
-      border-radius: 7px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .brand-mark svg {
-      width: 16px;
-      height: 16px;
-      fill: none;
-      stroke: #fff;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
     .brand-name {
       font-size: 0.9rem;
       font-weight: 700;
@@ -153,14 +134,7 @@
   <div class="wrap">
 
     <div class="brand">
-      <div class="brand-mark">
-        <svg viewBox="0 0 16 16">
-          <rect x="2" y="2" width="5" height="5" rx="1"/>
-          <rect x="9" y="2" width="5" height="5" rx="1"/>
-          <rect x="2" y="9" width="5" height="5" rx="1"/>
-          <rect x="9" y="9" width="5" height="5" rx="1"/>
-        </svg>
-      </div>
+        <img src="/images/p-logo.png" alt="Pixl Support" style="width:30px;height:30px;object-fit:contain;">
       <span class="brand-name">Pixl Support</span>
     </div>
 
@@ -170,20 +144,11 @@
       <div class="divider"></div>
       <p class="notice">
         This dashboard contains <strong>confidential support conversations</strong> and team data.
-        By signing in, you agree not to share, screenshot, or discuss its content outside the team.
+        By signing in, you&nbsp;agree not to share, screenshot, or discuss its&nbsp;content outside the private slack channel <strong style="white-space:nowrap">#pixl-slop</strong>, as it falls <strong>under your NDA</strong>. 
       </p>
       <a href="/auth/slack" class="btn">
-        <svg viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19.7 32.6a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4h4v4z" fill="#E01E5A"/>
-          <path d="M21.7 32.6a4 4 0 0 1 4-4 4 4 0 0 1 4 4v10a4 4 0 0 1-4 4 4 4 0 0 1-4-4v-10z" fill="#E01E5A"/>
-          <path d="M25.7 19.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4 4 4 0 0 1 4 4v4h-4z" fill="#36C5F0"/>
-          <path d="M25.7 21.7a4 4 0 0 1 4 4 4 4 0 0 1-4 4H15.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4h10z" fill="#36C5F0"/>
-          <path d="M38.6 25.7a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4v-4h4z" fill="#2EB67D"/>
-          <path d="M36.6 25.7a4 4 0 0 1-4-4 4 4 0 0 1 4-4h10a4 4 0 0 1 4 4 4 4 0 0 1-4 4h-10z" fill="#2EB67D"/>
-          <path d="M32.6 38.6a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4h4v4z" fill="#ECB22E"/>
-          <path d="M32.6 36.6a4 4 0 0 1 4-4 4 4 0 0 1 4 4v10a4 4 0 0 1-4 4 4 4 0 0 1-4-4v-10z" fill="#ECB22E"/>
-        </svg>
-        Sign in with Slack
+        <img src="/images/slack-icon.png" alt="Slack" style="width:18px;height:18px;object-fit:contain;">
+        Log In with Slack
       </a>
       <div class="error" id="error-msg"></div>
     </div>
