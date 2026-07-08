@@ -34,6 +34,10 @@ function requireAdmin(req, res, next) {
 }
 
 async function requireAuth(req, res, next) {
+  if (process.env.DEV_SKIP_AUTH === 'true') {
+    req.session.user = req.session.user || { id: 'DEV', name: 'Dev', avatar: null };
+    return next();
+  }
   if (!req.session.user) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not authenticated' });
     return res.redirect('/login.html');
