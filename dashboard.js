@@ -25,6 +25,8 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const speakLog = [];
+
 function requireAdmin(req, res, next) {
   if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
   const admins = (process.env.SLACK_ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -343,10 +345,16 @@ app.post('/api/speak', requireAdmin, async (req, res) => {
       text: text.trim(),
       ...(thread_ts?.trim() ? { thread_ts: thread_ts.trim() } : {}),
     });
+    speakLog.unshift({ ts: Date.now(), user: req.session.user, channel: channel.trim(), thread_ts: thread_ts?.trim() || null, text: text.trim() });
+    if (speakLog.length > 200) speakLog.pop();
     res.json({ ok: true });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
+});
+
+app.get('/api/speak/log', requireAdmin, (req, res) => {
+  res.json(speakLog);
 });
 
 app.get('/', requireAuth, (req, res) => {
