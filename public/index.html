@@ -29,16 +29,17 @@
             This dashboard contains sensitive and confidential information,
             including private user support conversations.<br /><br />
             Do not share, screenshot, copy, or discuss the content of this page
-            outside of your authorized team.
+            outside of your authorized team, as it falls under your NDA.
           </p>
           <button id="conf-btn" onclick="dismissReminder()">
-            I Understand
+            I promise I will not leak
           </button>
         </div>
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat-card neutral">
+        <div class="stat-card neutral" style="position:relative;">
+          <img src="/images/gold-currency.png" alt="" style="position:absolute;top:10px;right:10px;width:22px;height:22px;opacity:.38;pointer-events:none;image-rendering:pixelated;transform:rotate(14deg);">
           <div class="stat-label">Total Tickets</div>
           <div class="stat-value sk" style="height: 2rem; width: 4rem">
             &nbsp;
@@ -56,7 +57,8 @@
             &nbsp;
           </div>
         </div>
-        <div class="stat-card red">
+        <div class="stat-card red" style="position:relative;">
+          <img src="/images/red-currency.png" alt="" style="position:absolute;top:10px;right:10px;width:20px;height:20px;opacity:.36;pointer-events:none;image-rendering:pixelated;transform:rotate(-9deg);">
           <div class="stat-label">Longest Open</div>
           <div class="stat-value sk" style="height: 2rem; width: 4rem">
             &nbsp;
@@ -64,7 +66,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" style="position:relative;">
         <div class="card-header">
           <div>
             <div class="card-title">Activity</div>
@@ -73,12 +75,16 @@
           <div class="card-hint">Created vs resolved per day</div>
         </div>
         <div class="chart-wrap"><canvas id="chart"></canvas></div>
+        <img src="/images/gold-currency.png" alt="" style="position:absolute;bottom:18px;right:20px;width:16px;height:16px;opacity:.2;pointer-events:none;image-rendering:pixelated;transform:rotate(5deg);">
       </div>
 
-      <div class="card" style="overflow: hidden">
+      <div class="card" style="overflow: hidden; position:relative;">
         <div class="card-header" style="padding-bottom: 12px">
           <div class="card-big-title">Resolver leaderboard</div>
-          <div class="card-hint">Top 10 each</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <img src="/images/red-currency.png" alt="" style="width:16px;height:16px;opacity:.32;pointer-events:none;image-rendering:pixelated;transform:rotate(6deg);flex-shrink:0;">
+            <div class="card-hint">Top 10 each</div>
+          </div>
         </div>
         <div class="lb-grid" id="lb-grid">
           <div class="lb-col">
