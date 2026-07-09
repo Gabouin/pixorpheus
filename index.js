@@ -1221,7 +1221,7 @@ const PIXL_WELCOME_MSGS = [
   "welcome !! pixl is a retro 2D world where you level up by building real stuff - go crazy :yay:",
   "heyy welcome :hyper-dino-wave: start shipping projects and you'll earn pixels to unlock prizes and funding fr",
   "welcome to pixl !! it's basically a game where you build real things and get rewarded for it — idk it slaps :sm_slap:",
-  "oh a new one :eyes-shaking: welcome !! go check out the sidequests and start shipping, that's literally how this works",
+  "oh a new one :eyes_shaking: welcome !! go check out the sidequests and start shipping, that's literally how this works",
 ];
 
 app.event('member_joined_channel', async ({ event, client }) => {
