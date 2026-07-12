@@ -1225,7 +1225,7 @@ const PIXL_WELCOME_MSGS = [
 ];
 
 app.event('member_joined_channel', async ({ event, client }) => {
-  if (event.channel !== 'C0B5P4N0WHH') return;
+  if (event.channel !== 'C0B5P4N0WHH' && event.channel !== 'C0BHLGJ7YBA') return;
   if (event.user === botUserId) return;
 
   try {
@@ -1235,10 +1235,13 @@ app.event('member_joined_channel', async ({ event, client }) => {
       text: `<@${event.user}> ${msg}`,
     });
     welcomeThreads.add(posted.ts);
+    const ccText = event.channel === 'C0B5P4N0WHH'
+      ? `cc <!subteam^S0BFM30573R>`
+      : `cc <@${RIDIT_ID}>`;
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: posted.ts,
-      text: `cc <@S0BFM30573R>`,
+      text: ccText,
     });
   } catch (e) {
     console.error('welcome error:', e.message);
