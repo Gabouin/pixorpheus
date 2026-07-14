@@ -1,6 +1,7 @@
 <h1 align="center">
   <br>
-  <img width="18%" alt="Pixorpheus" src="https://github.com/user-attachments/assets/REPLACE_WITH_YOUR_IMAGE" />
+  <img width="18%" alt="Pixorpheus" src="https://github.com/user-attachments/assets/7c35eff3-3afb-4c61-965a-4993cc2bcce5"
+ />
   <br>
   Pixorpheus
   <br>
