@@ -372,6 +372,24 @@ app.get('/api/speak/log', requireAdmin, async (req, res) => {
   }
 });
 
+function requireApiKey(req, res, next) {
+  const key = process.env.EXTERNAL_API_KEY;
+  if (!key) return res.status(503).json({ error: 'API key not configured' });
+  if (req.headers['x-api-key'] !== key) return res.status(401).json({ error: 'Invalid API key' });
+  next();
+}
+
+app.post('/api/external/dm', requireApiKey, async (req, res) => {
+  const { userId, message } = req.body;
+  if (!userId?.trim() || !message?.trim()) return res.status(400).json({ error: 'Missing userId or message' });
+  try {
+    await slack.chat.postMessage({ channel: userId.trim(), text: message.trim() });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
