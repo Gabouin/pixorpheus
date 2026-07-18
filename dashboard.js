@@ -6,6 +6,8 @@ require('dotenv').config();
 
 const { Pool } = require('pg');
 const { WebClient } = require('@slack/web-api');
+const Jimp = require('jimp');
+const { logEvent } = require('./pixl-logs');
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -146,6 +148,7 @@ app.post('/api/moderate/dm', requireAuth, async (req, res) => {
 
   try {
     await slack.chat.postMessage({ channel: slackUserId, text: MODERATION_MESSAGES[action] });
+    logEvent(slack, `⚠️ violation: *${action}* sent to <@${slackUserId}> by <@${req.session.user.id}>`);
     res.json({ ok: true });
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -319,6 +322,8 @@ app.post('/api/tickets/:ts/resolve', requireAuth, async (req, res) => {
       ],
     });
 
+    logEvent(slack, `✅ ticket resolved by <@${user.id}>`);
+
     try { await slack.reactions.add({ channel: process.env.SLACK_HELP_CHANNEL, name: 'white_check_mark', timestamp: ts }); } catch (_) {}
     try { await slack.reactions.remove({ channel: process.env.SLACK_HELP_CHANNEL, name: 'thinking_face', timestamp: ts }); } catch (_) {}
 
@@ -384,8 +389,46 @@ app.post('/api/external/dm', requireApiKey, async (req, res) => {
   if (!userId?.trim() || !message?.trim()) return res.status(400).json({ error: 'Missing userId or message' });
   try {
     await slack.chat.postMessage({ channel: userId.trim(), text: message.trim() });
+    logEvent(slack, `📨 external DM sent to <@${userId.trim()}>`);
     res.json({ ok: true });
   } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+const LOG_EVENT_EMOJIS = { review: '📝', violation: '⚠️', payout: '💰' };
+
+app.post('/api/external/log', requireApiKey, async (req, res) => {
+  const { type, text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Missing text' });
+  const emoji = LOG_EVENT_EMOJIS[type?.trim()?.toLowerCase()] || '📋';
+  const label = type?.trim() ? `*${type.trim()}* — ` : '';
+  await logEvent(slack, `${emoji} ${label}${text.trim().slice(0, 500)}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/external/pixify', requireApiKey, async (req, res) => {
+  const userId = req.query.userId?.trim();
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  const size = Math.min(64, Math.max(2, parseInt(req.query.size) || 8));
+  try {
+    const result = await slack.users.info({ user: userId });
+    const avatarUrl = result.user.profile.image_512 || result.user.profile.image_192 || result.user.profile.image_72;
+    if (!avatarUrl) return res.status(404).json({ error: 'No profile picture found' });
+
+    const image = await Jimp.read(avatarUrl);
+    const w = image.getWidth();
+    const h = image.getHeight();
+    image
+      .resize(Math.max(1, Math.floor(w / size)), Math.max(1, Math.floor(h / size)), Jimp.RESIZE_NEAREST_NEIGHBOR)
+      .resize(w, h, Jimp.RESIZE_NEAREST_NEIGHBOR);
+
+    const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(buffer);
+  } catch (e) {
+    if (e.data?.error === 'user_not_found') return res.status(404).json({ error: 'User not found' });
     res.status(502).json({ error: e.message });
   }
 });
