@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
+const { logEvent } = require("./pixl-logs");
 require("dotenv").config();
 
 const NO_CREDITS = '__NO_CREDITS__';
@@ -373,6 +374,8 @@ async function handleNewQuestion(event, client) {
       console.error('[handleNewQuestion] ticket insert error:', e.message);
     }
   }
+
+  logEvent(client, `🎫 new ticket from <@${event.user}>: ${(event.text || '[no text]').slice(0, 140)}`);
 
   checkFAQAndSimilar(event, client).catch(() => {});
 
@@ -1216,12 +1219,21 @@ app.event('reaction_added', async ({ event, client }) => {
   } catch (_) {}
 });
 
-const PIXL_WELCOME_MSGS = [
+// Post-launch welcome messages — swap these back in once pixl launches
+const PIXL_WELCOME_MSGS_LAUNCHED = [
   "yo welcome to #pixl !! go ship something and earn your first pixels :pixel_heart:",
   "welcome !! pixl is a retro 2D world where you level up by building real stuff - go crazy :yay:",
   "heyy welcome :hyper-dino-wave: start shipping projects and you'll earn pixels to unlock prizes and funding fr",
   "welcome to pixl !! it's basically a game where you build real things and get rewarded for it — idk it slaps :sm_slap:",
   "oh a new one :eyes-shaking: welcome !! go check out the sidequests and start shipping, that's literally how this works",
+];
+
+const PIXL_WELCOME_MSGS = [
+  "yo welcome to #pixl !! we haven't launched yet but it's coming SOON, you're early :pixel_heart:",
+  "welcome !! pixl is a retro 2D world where you level up by building real stuff — not launched yet but launching soon, stay tuned :yay:",
+  "heyy welcome :hyper-dino-wave: pixl hasn't launched yet but it drops soon — you're getting in before everyone fr",
+  "welcome to pixl !! it's a game where you build real things and get rewarded for it — launching soon, you picked the perfect time to show up :sm_slap:",
+  "oh a new one :eyes-shaking: welcome !! pixl isn't out yet but launch is coming soon — hang around, you'll be first in line",
 ];
 
 app.event('member_joined_channel', async ({ event, client }) => {
@@ -2325,6 +2337,7 @@ app.command("/pixl-ship", async ({ command, ack, client }) => {
     }]
   });
   botStats.aiReplies++;
+  logEvent(client, `🚀 new ship from <@${command.user_id}>: ${desc.slice(0, 140)}`);
 });
 
 // /pixl-leaderboard — show who has the most memory facts stored (most active)
