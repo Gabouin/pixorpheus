@@ -1221,7 +1221,7 @@ app.event('reaction_added', async ({ event, client }) => {
 
 // Post-launch welcome messages — swap these back in once pixl launches
 const PIXL_WELCOME_MSGS_LAUNCHED = [
-  "yo welcome to #pixl !! go ship something and earn your first pixels :pixel_heart:",
+  "yo welcome to <#C0B5P4N0WHH> !! go ship something and earn your first pixels :pixel_heart:",
   "welcome !! pixl is a retro 2D world where you level up by building real stuff - go crazy :yay:",
   "heyy welcome :hyper-dino-wave: start shipping projects and you'll earn pixels to unlock prizes and funding fr",
   "welcome to pixl !! it's basically a game where you build real things and get rewarded for it — idk it slaps :sm_slap:",
@@ -1229,7 +1229,7 @@ const PIXL_WELCOME_MSGS_LAUNCHED = [
 ];
 
 const PIXL_WELCOME_MSGS = [
-  "yo welcome to #pixl !! we haven't launched yet but it's coming SOON, you're early :pixel_heart:",
+  "yo welcome to <#C0B5P4N0WHH> !! we haven't launched yet but it's coming SOON, you're early :pixel_heart:",
   "welcome !! pixl is a retro 2D world where you level up by building real stuff — not launched yet but launching soon, stay tuned :yay:",
   "heyy welcome :hyper-dino-wave: pixl hasn't launched yet but it drops soon — you're getting in before everyone fr",
   "welcome to pixl !! it's a game where you build real things and get rewarded for it — launching soon, you picked the perfect time to show up :sm_slap:",
