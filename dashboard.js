@@ -490,19 +490,51 @@ app.get('/api/external/tickets/:ts/thread', requireApiKey, async (req, res) => {
 
 app.post('/api/external/tickets/:ts/reply', requireApiKey, async (req, res) => {
   const { ts } = req.params;
-  const { text, username, icon_url } = req.body;
+  const { text, username, icon_url, slackId } = req.body;
   if (!text?.trim()) return res.status(400).json({ error: 'Text is required' });
+
+  // If the caller sends the acting user's Slack id, post as that person (name +
+  // avatar) so the reply reads like they answered — same as the session-based
+  // reply above. Falls back to any explicit username/icon_url, then Pixl Support.
+  let name = username?.trim();
+  let avatar = icon_url;
+  if (slackId) {
+    try { const u = await getSlackUser(slackId); name = u.name; avatar = u.avatar; } catch (_) {}
+  }
+
   try {
     await slack.chat.postMessage({
       channel: process.env.SLACK_HELP_CHANNEL,
       thread_ts: ts,
       text: text.trim(),
-      username: username?.trim() || 'Pixl Support',
-      ...(icon_url ? { icon_url } : {}),
+      username: name || 'Pixl Support',
+      ...(avatar ? { icon_url: avatar } : {}),
     });
     res.json({ ok: true });
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/external/tickets/activity', requireApiKey, async (req, res) => {
+  try {
+    const [created, resolved] = await Promise.all([
+      db.query(`
+        SELECT to_char(to_timestamp(msg_ts::float), 'YYYY-MM-DD') AS day, COUNT(*)::int AS count
+        FROM tickets
+        WHERE msg_ts::float >= extract(epoch from now() - interval '30 days')
+        GROUP BY day ORDER BY day
+      `),
+      db.query(`
+        SELECT to_char(closed_at, 'YYYY-MM-DD') AS day, COUNT(*)::int AS count
+        FROM tickets
+        WHERE status = 'closed' AND closed_at >= now() - interval '30 days'
+        GROUP BY day ORDER BY day
+      `),
+    ]);
+    res.json({ created: created.rows, resolved: resolved.rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
