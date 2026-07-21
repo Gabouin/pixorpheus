@@ -433,6 +433,79 @@ app.get('/api/external/pixify', requireApiKey, async (req, res) => {
   }
 });
 
+// Read-only ticket access + threaded replies for external tools (the Pixl HQ
+// dashboard), authed with EXTERNAL_API_KEY instead of a Slack login. Mirrors the
+// session-guarded /api/tickets* endpoints above.
+app.get('/api/external/tickets/stats', requireApiKey, async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT
+        COUNT(*)::int                                   AS total,
+        COUNT(*) FILTER (WHERE status = 'open')::int   AS open,
+        COUNT(*) FILTER (WHERE status = 'closed')::int AS resolved
+      FROM tickets
+    `);
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/external/tickets', requireApiKey, async (req, res) => {
+  try {
+    const { status, search } = req.query;
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (status && status !== 'all') { where += ` AND status = $${params.push(status)}`; }
+    if (search?.trim()) { where += ` AND description ILIKE $${params.push('%' + search.trim() + '%')}`; }
+    const result = await db.query(`SELECT * FROM tickets ${where} ORDER BY msg_ts DESC LIMIT 200`, params);
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/external/tickets/:ts/thread', requireApiKey, async (req, res) => {
+  try {
+    const result = await slack.conversations.replies({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      ts: req.params.ts,
+      limit: 200,
+    });
+    const messages = await Promise.all(
+      result.messages.map(async (msg, i) => {
+        let name = msg.username || 'Bot';
+        let avatar = msg.icons?.image_72 || null;
+        if (msg.user) {
+          try { const u = await getSlackUser(msg.user); name = u.name; avatar = u.avatar; } catch (_) {}
+        }
+        return { ts: msg.ts, text: msg.text, name, avatar, isFirst: i === 0, isBot: !!msg.bot_id };
+      })
+    );
+    res.json(messages);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/external/tickets/:ts/reply', requireApiKey, async (req, res) => {
+  const { ts } = req.params;
+  const { text, username, icon_url } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Text is required' });
+  try {
+    await slack.chat.postMessage({
+      channel: process.env.SLACK_HELP_CHANNEL,
+      thread_ts: ts,
+      text: text.trim(),
+      username: username?.trim() || 'Pixl Support',
+      ...(icon_url ? { icon_url } : {}),
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
