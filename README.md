@@ -8,7 +8,7 @@
 </h1>
 
 <h4 align="center">
-The official Slack bot of the <a href="https://hackclub.slack.com/archives/C0B5P4N0WHH">Pixl</a> YSWS program , part entertainer, part support system, part AI with too much personality.
+The official Slack bot of the <a href="https://hackclub.slack.com/archives/C0B5P4N0WHH">Pixl</a> YSWS program , part entertainer, part support system, part AI with too much personality. Made officially by Gabin
 </h4>
 
 <div align="center">
